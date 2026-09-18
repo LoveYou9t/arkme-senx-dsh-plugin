@@ -1449,7 +1449,7 @@ describe('outgoing call Host API dispatch', () => {
   it('normalizes long-article detail, update, and draft operations', async () => {
     const service = fakeService()
     await dispatchArkmeHostOperation(service as never, 'source.long-article.detail', {
-      sourceRef: 'source-1', itemUid: 'record-1', accessToken: 'must-not-forward',
+      sourceRef: 'source-1', itemUid: 'record-1', messageActionRef: 'signed-message', accessToken: 'must-not-forward',
     })
     await dispatchArkmeHostOperation(service as never, 'source.long-article.update', {
       sourceRef: 'source-1', itemUid: 'record-1', title: '标题', textContent: '正文',
@@ -1459,7 +1459,7 @@ describe('outgoing call Host API dispatch', () => {
       sourceRef: 'source-1', itemUid: 'record-1', title: '草稿', textContent: '正文', durationMillis: 500,
     })
 
-    expect(service.longArticleDetail).toHaveBeenCalledWith('source-1', 'record-1')
+    expect(service.longArticleDetail).toHaveBeenCalledWith('source-1', 'record-1', undefined, 'signed-message')
     expect(service.updateLongArticle).toHaveBeenCalledWith('source-1', 'record-1', {
       title: '标题', textContent: '正文', version: 2, editDurationMillis: 1200,
     })

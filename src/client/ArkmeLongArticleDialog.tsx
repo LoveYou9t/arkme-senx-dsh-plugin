@@ -83,6 +83,8 @@ export function ArkmeLongArticleSnapshotDialog({ item, onClose }: { item: ArkmeT
 
 export function ArkmeLongArticleDialog({ sourceRef, item, onClose, onCreated, onUpdated }: ArkmeLongArticleDialogProps) {
   const { notice: imageNotice, showNotice: showImageNotice } = useArkmeFileActionNotice(5000)
+  const messageActionRef = useRef(item?.messageActionRef)
+  messageActionRef.current = item?.messageActionRef
   const itemUid = item?.itemUid
   const creating = item === undefined
   const [detail, setDetail] = useState<ArkmeLongArticleDetail>()
@@ -164,7 +166,7 @@ export function ArkmeLongArticleDialog({ sourceRef, item, onClose, onCreated, on
     setError('')
     try {
       const value = await callArkme<ArkmeLongArticleDetail>('source.long-article.detail', {
-        sourceRef, itemUid,
+        sourceRef, itemUid, messageActionRef: messageActionRef.current,
       })
       setDetail(value)
       setDraftFormat(value.textFormat ?? 'plain')
@@ -389,10 +391,12 @@ export function ArkmeLongArticleDialog({ sourceRef, item, onClose, onCreated, on
 
   const titleValue = editing ? title : detail?.title ?? item?.title ?? ''
   const textValue = editing ? textContent : detail?.textContent ?? item?.textContent ?? ''
+  const readFormat = detail === undefined ? item?.textFormat : detail.textFormat
+  const readBlocks = detail === undefined ? item?.contentBlocks : detail.contentBlocks
   const staticDuration = detail?.thinkingDurationMillis
     ?? Math.max(0, (item?.recordDurationMillis ?? 0) + (item?.editDurationMillis ?? 0))
   const metaDuration = editing ? displayedDurationMillis : staticDuration
-  const wordCount = (article || detail?.textFormat === 'markdown') ? arkmeMarkdownPlainText(textValue).replace(/\[图片\]/g, '').length : textValue.length
+  const wordCount = (article || readFormat === 'markdown') ? arkmeMarkdownPlainText(textValue).replace(/\[图片\]/g, '').length : textValue.length
   const sendAt = detail?.sendAtMillis ?? item?.sendAtMillis ?? 0
 
   return <div style={styles.overlay} role="dialog" aria-modal="true" aria-label={creating ? '写长文' : '长文详情'} onClick={event => { event.stopPropagation() }} onMouseDown={event => { if (event.target === event.currentTarget) requestClose() }}>
@@ -433,7 +437,7 @@ export function ArkmeLongArticleDialog({ sourceRef, item, onClose, onCreated, on
                 }} />
             : editing
             ? <textarea autoFocus={creating} style={styles.bodyInput} value={textContent} maxLength={MAX_CONTENT_LENGTH} placeholder="请输入正文内容" aria-label="长文正文" disabled={submitting || accountChanged} onChange={event => { setTextContent(event.target.value) }} />
-            : detail?.textFormat === 'markdown' ? <ArkmeLongArticleBody text={textValue} blocks={detail?.contentBlocks} textStyle={{ fontSize: styles.bodyRead?.fontSize, lineHeight: styles.bodyRead?.lineHeight }} /> : <p style={styles.bodyRead}><ArkmeRichText text={textValue} linkLabelMode="raw" /></p>}
+            : readFormat === 'markdown' ? <ArkmeLongArticleBody text={textValue} blocks={readBlocks} textStyle={{ fontSize: styles.bodyRead?.fontSize, lineHeight: styles.bodyRead?.lineHeight }} /> : <p style={styles.bodyRead}><ArkmeRichText text={textValue} linkLabelMode="raw" /></p>}
         </div>}
     </article>
     <ArkmeFileActionToast notice={imageNotice} style={{ position: 'fixed', left: 24, right: 24, bottom: '12vh', zIndex: 1201 }} />

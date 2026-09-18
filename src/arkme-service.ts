@@ -1618,8 +1618,8 @@ export class ArkmeService {
   async addFavoriteSticker(item: ArkmeFavoriteStickerAddInput, signal?: AbortSignal): Promise<ArkmeFavoriteStickerList> { return await this.chat.addFavoriteSticker(item, signal) }
   async sendFavoriteSticker(sourceRef: string, fileAssetUid: string, options: { recordUid?: string; relationUid?: string; signal?: AbortSignal } = {}): Promise<ArkmeSourceSendResult> { return await this.chat.sendFavoriteSticker(sourceRef, fileAssetUid, options) }
   async manageFavoriteSticker(fileAssetUid: string, action: ArkmeFavoriteStickerManageAction, signal?: AbortSignal): Promise<ArkmeFavoriteStickerList> { return await this.chat.manageFavoriteSticker(fileAssetUid, action, signal) }
-  async longArticleDetail(sourceRef: string, itemUid: string, signal?: AbortSignal): Promise<ArkmeLongArticleDetail> {
-    return await this.chat.longArticleDetail(sourceRef, itemUid, signal)
+  async longArticleDetail(sourceRef: string, itemUid: string, signal?: AbortSignal, actionRef?: string): Promise<ArkmeLongArticleDetail> {
+    return await this.chat.longArticleDetail(sourceRef, itemUid, signal, actionRef)
   }
   private async prepareLongArticle(input: { title: string; textContent: string; textFormat?: 'plain' | 'markdown'; images?: import('./types.js').ArkmeLongArticleImage[] }, existing: ArkmeLongArticleDetail | undefined, signal?: AbortSignal) {
     if (input.textFormat !== 'markdown' && (input.images?.length ?? 0) > 0) throw new ArkmePluginError('long-article-image-format', '图文长文必须使用 Markdown', false)
