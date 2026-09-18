@@ -4786,9 +4786,45 @@ export class ChatService {
     if (!item) throw new ArkmePluginError('long-article-outcome-unknown', '长文已保存，聊天发送结果待确认，草稿已保留', false, 409)
     return { sourceRef, itemUid: input.recordUid, status: Number(objectValue(item.record).status ?? 0), sequence: Number(objectValue(item.relation).seq ?? 0), localState: 'synced' }
   }
-  async longArticleDetail(sourceRef: string, itemUid: string, signal?: AbortSignal): Promise<ArkmeLongArticleDetail> {
+  async longArticleDetail(sourceRef: string, itemUid: string, signal?: AbortSignal, actionRef?: string): Promise<ArkmeLongArticleDetail> {
+    if (!actionRef) return await this.record.longArticleDetail(sourceRef, itemUid, signal)
+    const session = await this.runtime.requireSession()
+    const source = await this.source.openSourceRef(sourceRef, session.userId)
+    if (source.kind !== 'private_chat' && source.kind !== 'group_chat') {
       return await this.record.longArticleDetail(sourceRef, itemUid, signal)
     }
+    const reference = await this.openMessageActionRef(actionRef, session.userId, source)
+    if (reference.sourceKind !== 'chat_relation' || reference.recordUid !== itemUid.trim() || !reference.relationUid || !reference.recordOwnerUserId) {
+      throw new ArkmePluginError('long-article-target-invalid', '长文消息身份无效，请刷新后重试', false, 403)
+    }
+    const data = await this.runtime.authenticatedChatPost<Record<string, unknown>>(
+      '/api/v1/chats/records/detail', {
+        chat_session_uid: reference.chatSessionUid, record_uid: reference.recordUid,
+        record_owner_user_id: reference.recordOwnerUserId, rel_uid: reference.relationUid,
+        ...(reference.sourceSequence > 0 ? { seq: reference.sourceSequence } : {}),
+      }, session, signal,
+    )
+    const raw = objectValue(data.item)
+    const relation = objectValue(raw.relation)
+    const record = objectValue(raw.record)
+    const core = objectValue(record.payload)
+    if (stringValue(core.record_uid) !== reference.recordUid || stringValue(relation.rel_uid) !== reference.relationUid
+      || numberValue(core.owner_user_id) !== reference.recordOwnerUserId
+      || (numberValue(core.template_kind) !== 8 && numberValue(core.display_kind) !== 1)) {
+      throw new ArkmePluginError('long-article-detail-unavailable', '未找到可用的长文详情，请刷新后重试', true, 502)
+    }
+    const recordDurationMillis = Math.max(0, numberValue(core.record_duration_millis))
+    const editDurationMillis = Math.max(0, numberValue(core.edit_duration_millis))
+    return {
+      sourceRef, itemUid: reference.recordUid, title: stringValue(core.title),
+      textContent: stringValue(core.text_content), textFormat: arkmeRecordTextFormat(core),
+      contentBlocks: this.media.richContentBlocks(raw, session.userId),
+      sendAtMillis: numberValue(core.send_at), updateAtMillis: numberValue(core.update_at),
+      recordDurationMillis, editDurationMillis, thinkingDurationMillis: recordDurationMillis + editDurationMillis,
+      version: numberValue(core.version),
+      editable: numberValue(core.owner_user_id) === session.userId && numberValue(core.creator_user_id) === session.userId,
+    }
+  }
   
   async updateLongArticle(
       sourceRef: string,
