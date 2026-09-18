@@ -1,3 +1,4 @@
+import { longArticleImageDestinations, remapLongArticleAssets } from '../long-article-content.js'
 import { encodeMentionMetadata, type ResolvedMentions } from './mention-metadata-codec.js'
 import { recordManualEditFact } from '../record-edit-history.js'
 import type { RecordEditHistoryTarget } from './record-edit-history-service.js'
@@ -3132,7 +3133,12 @@ export class ChatService {
       if (rawItems.length === 0 && stringValue(data.audit_status) === 'auditing') {
         throw new ArkmePluginError('message-copy-link-auditing', '审核中', true, 409)
       }
-      const items = rawItems.map(messageCopyLinkSnapshotItemFromData)
+      const items = rawItems.map(raw => {
+        const item = messageCopyLinkSnapshotItemFromData(raw)
+        if (item.displayKind !== 1 && item.templateKind !== 8) return item
+        const contentBlocks = this.media.forwardContentBlocks(listValue(objectValue(raw).media_items), session.userId, { longArticle: true })
+        return { ...item, contentBlocks, ...(item.mediaItems.length > contentBlocks.length ? { mediaUnavailable: true } : {}) }
+      })
       if (items.length === 0 || items.length > MAX_MESSAGE_COPY_LINK_ITEMS) {
         throw new ArkmePluginError('message-copy-link-unavailable', '链接暂不可用', false, 404)
       }
@@ -4451,12 +4457,12 @@ export class ChatService {
   async sendSourceRich(
       sourceRef: string,
       input: ArkmeRichSendInput,
-      options: { recordUid?: string; relationUid?: string; expectedUserId?: number; signal?: AbortSignal } = {},
+      options: { recordUid?: string; relationUid?: string; expectedUserId?: number; signal?: AbortSignal; sendAtMillis?: number } = {},
     ): Promise<ArkmeSourceSendResult> {
       if (this.runtime.config.richMediaSendEnabled === false) {
         throw new ArkmePluginError('rich-content-disabled', '富内容发送已被插件配置关闭', false, 403)
       }
-      if (input.textFormat === 'markdown' && this.runtime.config.markdownQuickNotesEnabled !== true) throw new ArkmePluginError('markdown-send-disabled', 'Markdown 发送尚未开放，请稍后重试', false, 403)
+      if (input.textFormat === 'markdown' && (input.displayKind === 1 ? this.runtime.config.markdownLongArticlesEnabled : this.runtime.config.markdownQuickNotesEnabled) !== true) throw new ArkmePluginError('markdown-send-disabled', 'Markdown 发送尚未开放，请稍后重试', false, 403)
       const session = await this.runtime.requireSession()
       if (options.expectedUserId !== undefined && options.expectedUserId !== session.userId) throw new ArkmePluginError('file-account-changed', '账号已切换', false, 403)
       options.signal?.throwIfAborted()
@@ -4472,12 +4478,20 @@ export class ChatService {
       const recordDurationMillis = Math.max(0, Math.trunc(input.recordDurationMillis ?? (longArticle ? thinkingDurationMillis : 0)))
       const captureContext = input.captureContext === undefined ? undefined : arkmeRecordCaptureContextPayload(input.captureContext)
       if (title.length > (longArticle ? 100 : 500) || textContent.length > maxContentLength
-        || assets.length + (backgroundSound?.assets.length ?? 0) > 20
+        || (!longArticle && assets.length + (backgroundSound?.assets.length ?? 0) > 20)
         || (textContent === '' && title === '' && assets.length === 0)) {
         throw new ArkmePluginError('rich-content-invalid', '富内容为空、过长或附件数量超限', false)
       }
       if (longArticle && (title === '' || textContent === '')) {
         throw new ArkmePluginError('long-article-invalid', '长文标题和正文不能为空', false)
+      }
+      if (longArticle && assets.length > 0) {
+        const referenced = new Set(longArticleImageDestinations(textContent).filter(node => node.url.startsWith('arkme-asset:')).map(node => node.url.slice('arkme-asset:'.length)))
+        const limit = Math.min(this.runtime.config.maxUploadBytes ?? 50 * 1024 * 1024, 50 * 1024 * 1024)
+        if (input.textFormat !== 'markdown' || backgroundSound !== undefined || assets.some(asset => asset.fileKind !== 1 || asset.size <= 0 || asset.size > limit || !referenced.has(asset.fileAssetUid))
+          || [...referenced].some(uid => !assets.some(asset => asset.fileAssetUid === uid))) {
+          throw new ArkmePluginError('long-article-images-invalid', '正文图片引用或大小无效', false)
+        }
       }
       for (const asset of assets) {
         if (!/^[A-Za-z0-9._:-]{8,256}$/.test(asset.fileAssetUid) || asset.size < 0
@@ -4487,7 +4501,7 @@ export class ChatService {
       }
       const recordUid = options.recordUid?.trim() || randomUUID()
       const relationUid = options.relationUid?.trim() || randomUUID()
-      const templateKind = longArticle ? 1 : assets.length === 0 ? 1 : 2
+      const templateKind = assets.length === 0 ? 1 : 2
       let mentionPayload: Record<string, unknown> | undefined
       if ((input.humanMentions?.length ?? 0) > 0 || (input.botMentions?.length ?? 0) > 0) {
         if ((input.humanMentions?.length ?? 0) > 0 && source.kind !== 'group_chat') {
@@ -4507,7 +4521,7 @@ export class ChatService {
         textContent,
         mentionPayload,
       )
-      const sendAtMillis = Date.now()
+      const sendAtMillis = options.sendAtMillis ?? Date.now()
       const commonBody = {
         record_uid: recordUid,
         template_kind: templateKind,
@@ -4756,6 +4770,22 @@ export class ChatService {
     }
   }
   
+  async confirmLongArticlePublication(sourceRef: string, input: import('../types.js').ArkmeLongArticlePublishInput, userId: number, signal?: AbortSignal): Promise<ArkmeSourceSendResult> {
+    const session = await this.runtime.requireSession()
+    if (session.userId !== userId) throw new ArkmePluginError('file-account-changed', '账号已切换', false, 403)
+    const source = await this.source.openSourceRef(sourceRef, userId)
+    if (source.kind !== 'private_chat' && source.kind !== 'group_chat') return { sourceRef, itemUid: input.recordUid, status: 1, localState: 'synced' }
+    const page = await this.runtime.authenticatedChatPost<Record<string, unknown>>('/api/v1/chat/timeline/around', {
+      chat_session_uid: source.ownerRef, record_uid: input.recordUid, record_owner_user_id: userId, before_limit: 1, after_limit: 1,
+    }, session, signal, { lane: 'interactive-read', bypassCache: true })
+    if (stringValue(page.chat_session_uid) !== source.ownerRef) throw new ArkmePluginError('long-article-outcome-unknown', '长文发送结果待确认，草稿已保留', false, 409)
+    const item = [...(Array.isArray(page.items) ? page.items : []), page.anchor].map(objectValue).find(value => {
+      const relation = objectValue(value.relation)
+      return relation.rel_uid === input.relationUid && relation.record_uid === input.recordUid && Number(relation.record_owner_user_id) === userId
+    })
+    if (!item) throw new ArkmePluginError('long-article-outcome-unknown', '长文已保存，聊天发送结果待确认，草稿已保留', false, 409)
+    return { sourceRef, itemUid: input.recordUid, status: Number(objectValue(item.record).status ?? 0), sequence: Number(objectValue(item.relation).seq ?? 0), localState: 'synced' }
+  }
   async longArticleDetail(sourceRef: string, itemUid: string, signal?: AbortSignal): Promise<ArkmeLongArticleDetail> {
       return await this.record.longArticleDetail(sourceRef, itemUid, signal)
     }
@@ -4763,7 +4793,7 @@ export class ChatService {
   async updateLongArticle(
       sourceRef: string,
       itemUid: string,
-      input: { title: string; textContent: string; version: number; editDurationMillis: number },
+      input: import('../types.js').ArkmeLongArticleUpdateInput & { assets?: import('../types.js').ArkmeUploadedAsset[] },
     ): Promise<ArkmeLongArticleDetail> {
       return await this.record.updateLongArticle(sourceRef, itemUid, input)
     }
@@ -5218,14 +5248,20 @@ export class ChatService {
           ).trim() || 'Arkme用户'
           const textFormat = arkmeRecordTextFormat(item)
           const rawText = stringValue(item.text ?? item.text_preview ?? item.textPreview)
-          const textContent = textFormat === 'markdown' ? rawText : rawText.trim()
+          let textContent = textFormat === 'markdown' ? rawText : rawText.trim()
+          const displayKind = numberValue(item.display_kind ?? item.displayKind)
           const title = stringValue(item.title).trim()
           const rawType = stringValue(item.source_type ?? item.sourceType ?? payload.source_type ?? payload.sourceType)
           const sourceType: ArkmeForwardRecordPreviewItem['sourceType'] =
             rawType === 'record' || rawType === 'chat_record' || rawType === 'long_recording_segments'
               || rawType === 'agent' || rawType === 'ai_letter' ? rawType : 'unknown'
           const files = listValue(item.files)
-          const contentBlocks = this.media.forwardContentBlocks(files, viewerUserId)
+          const longArticle = displayKind === 1
+          const contentBlocks = this.media.forwardContentBlocks(files, viewerUserId, { longArticle })
+          if (longArticle && textFormat === 'markdown') {
+            const aliases = new Map(files.map((value, index) => [`arkme-asset:${stringValue(objectValue(value).file_asset_uid)}`, `arkme-asset:media-${index}`]))
+            textContent = remapLongArticleAssets(textContent, aliases)
+          }
           const call = objectValue(item.call_record_snapshot ?? item.callRecordSnapshot)
           const recordingSegments = listValue(item.long_recording_segments ?? item.longRecordingSegments)
           const rawSegments = recordingSegments.length > 0 ? recordingSegments : listValue(call.transcript_segments ?? call.transcriptSegments)
@@ -5268,13 +5304,13 @@ export class ChatService {
             title,
             textContent,
             textFormat,
+            displayKind,
             sourceType,
             templateKind: numberValue(item.template_kind ?? item.templateKind),
-            displayKind: numberValue(item.display_kind ?? item.displayKind),
             ...(contentBlocks.length === 0 ? {} : { contentBlocks }),
             ...(files.length > contentBlocks.length ? { mediaUnavailable: true } : {}),
             ...(segments.length === 0 ? {} : { segments }),
-            ...(segmentValues.length < rawSegments.length || files.length > 32 ? { truncated: true } : {}),
+            ...(segmentValues.length < rawSegments.length || (!longArticle && files.length > 32) ? { truncated: true } : {}),
             ...(contentLabel === undefined ? {} : { contentLabel }),
           })
         }

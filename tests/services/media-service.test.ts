@@ -415,3 +415,12 @@ it('restores expired Bot image bytes offline only from the current account cache
   await expect(secondMedia.readImage('arkme-bot-image-v1.fixture')).rejects.toThrow('foreign account')
   expect(state.readAvatarCache).toHaveBeenCalledTimes(2)
 })
+
+it('keeps all 100 long article snapshot images with local inline aliases', () => {
+  const media = new MediaService({config} as ServiceRuntime, {} as never, {} as never, {} as never)
+  const files = Array.from({length:100}, (_, i) => ({type:1,name:`${i}.png`,mime_type:'image/png',file_asset_uid:`private-${i}`,inline_ref:`arkme-asset:media-${i}`,preview_url:`https://jotmo-useraudio-test.oss-cn-hangzhou.aliyuncs.com/${i}.png`}))
+  const blocks = media.forwardContentBlocks(files,42,{longArticle:true})
+  expect(blocks).toHaveLength(100)
+  expect(blocks[99]!.fileAssetUid).toBe('media-99')
+  expect(JSON.stringify(blocks)).not.toContain('private-')
+})

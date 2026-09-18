@@ -7621,7 +7621,9 @@ export function ArkmeSurface({
                               ...(item.callRecord ? arkmeCallRecordBubbleStyle(item.isMe) : {}),
                             }}
                             onClick={event => {
-                              if (event.target instanceof Element && event.target.closest('button,a,audio,video,input,select,textarea,[role=link],[role=slider]')) return
+                              // Portal clicks follow the React tree but do not belong to this bubble's DOM.
+                              if (!(event.target instanceof Element) || !event.currentTarget.contains(event.target)) return
+                              if (event.target.closest('button,a,audio,video,input,select,textarea,[contenteditable],[role=link],[role=slider]')) return
                               if (window.getSelection()?.toString()) return
                               event.currentTarget.focus({ preventScroll: true })
                               openNoteDetail(item)

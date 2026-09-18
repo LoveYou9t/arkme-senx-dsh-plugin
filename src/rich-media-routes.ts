@@ -62,7 +62,7 @@ async function assertRouteUser(service: ArkmeService, expectedUserId: number): P
   }
 }
 
-export function createArkmeUploadHandler(service: ArkmeService, options: ArkmeRichMediaRouteOptions, mode: 'upload' | 'stage' = 'upload') {
+export function createArkmeUploadHandler(service: ArkmeService, options: ArkmeRichMediaRouteOptions, mode: 'upload' | 'stage' | 'long-article-stage' = 'upload') {
   return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     let temporaryPath = ''
     try {
@@ -104,7 +104,9 @@ export function createArkmeUploadHandler(service: ArkmeService, options: ArkmeRi
       if (received !== plannedSize) throw new ArkmePluginError('upload-size-mismatch', '上传文件不完整', false, 400)
       await assertRouteUser(service, expectedUserId)
       const uploadedFileKind = normalizedMimeType.startsWith('audio/') ? 2 : arkmePickedFileKind(normalizedMimeType, fileName)
-      const value = mode === 'stage'
+      const value = mode === 'long-article-stage'
+        ? await service.stageLongArticleImage(temporaryPath, { size: received, mimeType: normalizedMimeType, fileName }, expectedUserId)
+        : mode === 'stage'
         ? await service.fileStage(temporaryPath, { size: received, mimeType: normalizedMimeType, fileName }, expectedUserId, retention || undefined)
         : await service.uploadLocalFile(
           temporaryPath,

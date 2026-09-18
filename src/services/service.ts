@@ -131,6 +131,7 @@ export interface ArkmeServiceConfig {
   shareWebsite?: string
   richMediaRenderEnabled?: boolean
   markdownQuickNotesEnabled?: boolean
+  markdownLongArticlesEnabled?: boolean
   richMediaSendEnabled?: boolean
   maxUploadBytes?: number
   recordingImportDirectory?: string
@@ -170,6 +171,7 @@ export class ArkmePluginError extends Error {
   readonly failureKind?: ArkmePluginErrorBody['failureKind']
   readonly retryScope?: ArkmePluginErrorBody['retryScope']
   readonly recovery?: ArkmePluginErrorBody['recovery']
+  readonly imageFailures?: ArkmePluginErrorBody['imageFailures']
   /** The owner mutation may have completed, but the caller did not receive a usable acknowledgement. */
   readonly writeOutcomeUnknown?: true
 
@@ -179,7 +181,7 @@ export class ArkmePluginError extends Error {
     readonly retryable: boolean,
     readonly httpStatus = 400,
     options?: ErrorOptions & { upstreamStatus?: number; retryAfterMillis?: number; writeOutcomeUnknown?: boolean;
-      failureKind?: ArkmePluginErrorBody['failureKind']; retryScope?: ArkmePluginErrorBody['retryScope']; recovery?: ArkmePluginErrorBody['recovery'] },
+      failureKind?: ArkmePluginErrorBody['failureKind']; retryScope?: ArkmePluginErrorBody['retryScope']; recovery?: ArkmePluginErrorBody['recovery']; imageFailures?: ArkmePluginErrorBody['imageFailures'] },
   ) {
     super(message, options)
     this.name = 'ArkmePluginError'
@@ -188,6 +190,7 @@ export class ArkmePluginError extends Error {
     if (options?.failureKind !== undefined) this.failureKind = options.failureKind
     if (options?.retryScope !== undefined) this.retryScope = options.retryScope
     if (options?.recovery !== undefined) this.recovery = options.recovery
+    if (options?.imageFailures !== undefined) this.imageFailures = options.imageFailures
     if (options?.writeOutcomeUnknown === true) this.writeOutcomeUnknown = true
   }
 }

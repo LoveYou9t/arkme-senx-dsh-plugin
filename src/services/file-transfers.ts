@@ -7,9 +7,10 @@ import type { ArkmeUploadedAsset, ArkmeSourceSendResult } from '../types.js'
 import { ArkmePluginError } from './service.js'
 import { ARKME_TOOL_FILE_MAX_BYTES } from '../file-transfer-contract.js'
 import { arkmeFileBackgroundSound, assertArkmeBackgroundSoundLocalFiles } from '../record-background-sound.js'
+import { isLongArticleImageMimeType, LONG_ARTICLE_IMAGE_MAX_BYTES } from '../long-article-content.js'
 
 type Metadata = Pick<ArkmeLocalFile, 'fileName' | 'mimeType' | 'size'>
-interface StoredFile extends ArkmeLocalFile { sha256: string; createdAtMillis: number; asset?: ArkmeUploadedAsset; retention?: 'references' }
+interface StoredFile extends ArkmeLocalFile { sha256: string; createdAtMillis: number; asset?: ArkmeUploadedAsset; retention?: 'references'; longArticle?: true }
 interface FileState { version: 1; files: Record<string, StoredFile>; tasks: ArkmeFileSendTask[]; originals: Record<string, string> }
 export type FileTransferSendOutcome =
   | { kind: 'owner_accepted'; result: ArkmeSourceSendResult }
@@ -145,8 +146,8 @@ export class FileTransfers {
     this.mutations = work
     return work
   }
-  private validateMetadata(metadata: Metadata): void {
-    const limit = metadata.mimeType.startsWith('image/') ? this.policy.maxImageBytes : this.policy.maxFileBytes
+  private validateMetadata(metadata: Metadata, longArticle = false): void {
+    const limit = longArticle ? LONG_ARTICLE_IMAGE_MAX_BYTES : metadata.mimeType.startsWith('image/') ? this.policy.maxImageBytes : this.policy.maxFileBytes
     if (!metadata.fileName.trim() || metadata.fileName.length > 255 || /[\u0000-\u001f]/.test(metadata.fileName)
       || metadata.mimeType.length > 200 || !/^[a-zA-Z0-9!#$&^_.+-]+\/[a-zA-Z0-9!#$&^_.+-]+$/.test(metadata.mimeType)
       || !Number.isSafeInteger(metadata.size) || metadata.size <= 0 || metadata.size > limit) {
@@ -154,16 +155,25 @@ export class FileTransfers {
     }
   }
 
+  async stageLongArticleImage(temporaryPath: string, metadata: Metadata, expectedUserId?: number): Promise<ArkmeLocalFile> {
+    const mime = arkmeNormalizedFileMimeType(metadata.mimeType, metadata.fileName)
+    if (!isLongArticleImageMimeType(mime)) throw fail('long-article-image-invalid', '长文仅支持 JPG、PNG、GIF、WebP、AVIF、BMP 图片')
+    return await this.stageLocal(temporaryPath, metadata, expectedUserId, 'references', true)
+  }
   async stage(temporaryPath: string, metadata: Metadata, expectedUserId?: number, retention?: 'references'): Promise<ArkmeLocalFile> {
+    return await this.stageLocal(temporaryPath, metadata, expectedUserId, retention, false)
+  }
+  private async stageLocal(temporaryPath: string, metadata: Metadata, expectedUserId: number | undefined, retention: 'references' | undefined, longArticle: boolean): Promise<ArkmeLocalFile> {
     const userId = await this.ports.currentUser()
     if (expectedUserId !== undefined && expectedUserId !== userId) throw fail('file-account-changed', '账号已切换，本次文件导入已取消')
     const normalizedMetadata = { ...metadata, mimeType: arkmeNormalizedFileMimeType(metadata.mimeType, metadata.fileName) }
-    this.validateMetadata(normalizedMetadata)
+    this.validateMetadata(normalizedMetadata, longArticle)
     return this.exclusive(async () => {
       const state = await this.state(userId)
       await this.prune(userId, state)
-      const used = Object.values(state.files).reduce((sum, file) => sum + file.size, 0)
-      if (used + metadata.size > Math.max(this.policy.maxFileBytes, 1024 * 1024 * 1024) || Object.keys(state.files).length >= 256) {
+      const ordinaryFiles = Object.values(state.files).filter(file => file.longArticle !== true)
+      const used = ordinaryFiles.reduce((sum, file) => sum + file.size, 0)
+      if (!longArticle && (used + metadata.size > Math.max(this.policy.maxFileBytes, 1024 * 1024 * 1024) || ordinaryFiles.length >= 256)) {
         throw fail('file-cache-full', '本地附件空间不足，请移除不再需要的草稿或失败任务')
       }
       const info = await stat(temporaryPath)
@@ -172,7 +182,7 @@ export class FileTransfers {
       for await (const chunk of createReadStream(temporaryPath)) hash.update(chunk)
       await this.assertUser(userId)
       const ref = `arkme-file-v1.${randomUUID()}`
-      const file: StoredFile = { ...normalizedMetadata, fileRef: ref, fileKind: arkmePickedFileKind(normalizedMetadata.mimeType, normalizedMetadata.fileName), sha256: hash.digest('hex'), createdAtMillis: Date.now(), ...(retention ? { retention } : {}) }
+      const file: StoredFile = { ...normalizedMetadata, fileRef: ref, fileKind: arkmePickedFileKind(normalizedMetadata.mimeType, normalizedMetadata.fileName), sha256: hash.digest('hex'), createdAtMillis: Date.now(), ...(retention ? { retention } : {}), ...(longArticle ? { longArticle: true as const } : {}) }
       await copyFile(temporaryPath, this.path(userId, ref))
       await chmod(this.path(userId, ref), 0o600)
       state.files[ref] = file
@@ -392,9 +402,32 @@ export class FileTransfers {
       return clone(task)
     })
   }
+  private imageFailure(error: unknown, fileRef: string, file: ArkmeLocalFile | undefined, phase: 'validation' | 'upload'): ArkmePluginError {
+    const known = error instanceof ArkmePluginError ? error : new ArkmePluginError('long-article-image-failed', '图片处理失败，请重试', true, 502, { cause: error })
+    return new ArkmePluginError(known.code, `${file?.fileName ?? '图片'}：${known.message}`, known.retryable, known.httpStatus, {
+      ...known, cause: known, imageFailures: [{ fileRef, fileName: file?.fileName ?? '图片', phase }],
+    })
+  }
+  async uploadLongArticleImages(fileRefs: readonly string[], signal?: AbortSignal): Promise<ArkmeUploadedAsset[]> {
+    for (const ref of fileRefs) {
+      let file: ArkmeLocalFile | undefined
+      try {
+        const stored = (await this.state(await this.ports.currentUser())).files[ref]
+        if (stored !== undefined) file = publicFile(stored)
+        if (file !== undefined) this.validateMetadata(file, true)
+        file = (await this.readLocal(ref)).file
+        if (file.fileKind !== 1 || !isLongArticleImageMimeType(file.mimeType)) throw fail('long-article-image-invalid', '长文仅支持 JPG、PNG、GIF、WebP、AVIF、BMP 图片')
+        this.validateMetadata(file, true)
+      } catch (error) { throw this.imageFailure(error, ref, file, 'validation') }
+    }
+    return await this.uploadDirectRefs(fileRefs, signal, true)
+  }
   async uploadRefs(fileRefs: readonly string[], signal?: AbortSignal): Promise<ArkmeUploadedAsset[]> {
+    return await this.uploadDirectRefs(fileRefs, signal, false)
+  }
+  private async uploadDirectRefs(fileRefs: readonly string[], signal: AbortSignal | undefined, longArticle: boolean): Promise<ArkmeUploadedAsset[]> {
     const userId = await this.ports.currentUser()
-    if (fileRefs.length < 1 || fileRefs.length > this.policy.maxAttachments
+    if (fileRefs.length < 1 || (!longArticle && fileRefs.length > this.policy.maxAttachments)
       || new Set(fileRefs).size !== fileRefs.length || fileRefs.some(ref => !REF.test(ref))) {
       throw fail('file-upload-invalid', '请选择 1 至 9 个有效附件')
     }
@@ -414,17 +447,26 @@ export class FileTransfers {
         return current
       })
       try {
-        const assets: ArkmeUploadedAsset[] = []
-        for (const fileRef of fileRefs) {
+        const assets: ArkmeUploadedAsset[] = new Array(fileRefs.length)
+        let cursor = 0
+        const worker = async () => {
+        while (cursor < fileRefs.length) {
+          const index = cursor++
+          const fileRef = fileRefs[index]!
           await this.assertUser(userId, controller.signal)
           const stored = state.files[fileRef]
           if (stored === undefined) throw fail('file-local-missing', '本地附件已不存在')
           let asset = stored.asset?.fileKind === stored.fileKind ? stored.asset
             : Object.values(state.files).find(other => other.sha256 === stored.sha256 && other.asset?.fileKind === stored.fileKind)?.asset
           if (asset === undefined) {
-            asset = await this.ports.upload(
-              this.path(userId, fileRef), stored, () => {}, userId, controller.signal,
-            )
+            try {
+              asset = await this.ports.upload(
+                this.path(userId, fileRef), stored, () => {}, userId, controller.signal,
+              )
+            } catch (error) {
+              if (!longArticle || controller.signal.aborted) throw error
+              throw this.imageFailure(error, fileRef, stored, 'upload')
+            }
           }
           await this.assertUser(userId, controller.signal)
           asset = { ...asset, fileName: stored.fileName }
@@ -432,7 +474,18 @@ export class FileTransfers {
             stored.asset = asset
             await this.save(userId, state)
           })
-          assets.push(asset)
+          assets[index] = asset
+        }
+        }
+        const outcomes = await Promise.allSettled(Array.from({ length: longArticle ? Math.min(3, fileRefs.length) : 1 }, worker))
+        const failure = outcomes.find(result => result.status === 'rejected')
+        if (failure?.status === 'rejected') {
+          const first = failure.reason
+          if (longArticle && first instanceof ArkmePluginError) {
+            const imageFailures = outcomes.flatMap(result => result.status === 'rejected' && result.reason instanceof ArkmePluginError ? result.reason.imageFailures ?? [] : [])
+            if (imageFailures.length) throw new ArkmePluginError(first.code, first.message, first.retryable, first.httpStatus, { ...first, cause: first, imageFailures })
+          }
+          throw first
         }
         await this.assertUser(userId, controller.signal)
         return clone(assets)

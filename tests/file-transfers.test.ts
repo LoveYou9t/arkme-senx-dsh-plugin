@@ -878,3 +878,61 @@ describe('account-bound file lifecycle', () => {
     expect(await f.owner.tasks()).toContainEqual(expect.objectContaining({ taskRef: task.taskRef, state: 'sent' }))
   })
 })
+
+describe('long article files', () => {
+  it.each([10, 21, 100])('uploads %i images in order with at most three in flight and caches retries', async count => {
+    const f = await fixture()
+    const refs: string[] = []
+    for (let i = 0; i < count; i++) {
+      const path = join(f.directory, `image-${i}.png`)
+      await writeFile(path, `image-${i}`)
+      const file = await f.owner.stageLongArticleImage(path, { fileName: `image-${i}.png`, mimeType: 'image/png', size: (await readFile(path)).length })
+      refs.push(file.fileRef)
+    }
+    let running = 0; let peak = 0
+    f.upload.mockImplementation(async (_path, file) => {
+      peak = Math.max(peak, ++running)
+      await new Promise(resolve => setTimeout(resolve, 1))
+      running--
+      return { ...file, fileAssetUid: `asset-${file.fileName}` }
+    })
+    const assets = await f.owner.uploadLongArticleImages(refs)
+    expect(peak).toBeLessThanOrEqual(3)
+    expect(assets.map(asset => asset.fileName)).toEqual(Array.from({length: count}, (_, i) => `image-${i}.png`))
+    await f.owner.uploadLongArticleImages(refs)
+    expect(f.upload).toHaveBeenCalledTimes(count)
+    await expect(f.owner.uploadRefs(refs)).rejects.toMatchObject({code:'file-upload-invalid'})
+  })
+  it('rejects oversized and empty images before staging and accepts the exact limit', async () => {
+    const f = await fixture()
+    const path = join(f.directory, 'limit.png')
+    await writeFile(path, Buffer.alloc(1000))
+    await expect(f.owner.stageLongArticleImage(path, {fileName:'limit.png',mimeType:'image/png',size:1000})).resolves.toMatchObject({size:1000})
+    await writeFile(path, Buffer.alloc(1001))
+    await expect(f.owner.stageLongArticleImage(path, {fileName:'limit.png',mimeType:'image/png',size:1001})).resolves.toMatchObject({size:1001})
+    await expect(f.owner.stageLongArticleImage(path, {fileName:'limit.png',mimeType:'image/png',size:50 * 1024 * 1024 + 1})).rejects.toMatchObject({code:'file-input-invalid'})
+    await expect(f.owner.stageLongArticleImage(path, {fileName:'limit.png',mimeType:'image/png',size:0})).rejects.toMatchObject({code:'file-input-invalid'})
+  })
+})
+
+it('does not impose the ordinary 256-file cache ceiling on long article images', async () => {
+  const f = await fixture()
+  const path = join(f.directory, 'tiny.png')
+  await writeFile(path, 'x')
+  for (let i = 0; i < 257; i++) await f.owner.stageLongArticleImage(path, { fileName:`${i}.png`,mimeType:'image/png',size:1 })
+  expect(await f.owner.files()).toHaveLength(257)
+  const restarted = new FileTransfers(f.directory, f.ports, 1000)
+  expect(await restarted.files()).toHaveLength(257)
+  await expect(f.stage('ordinary.pdf')).resolves.toMatchObject({fileName:'ordinary.pdf'})
+})
+
+it('identifies the exact long article image when upload or fixed-limit validation fails', async () => {
+  const f=await fixture(); const path=join(f.directory,'failed.png'); await writeFile(path,'image bytes')
+  const file=await f.owner.stageLongArticleImage(path,{fileName:'failed.png',mimeType:'image/png',size:11})
+  f.upload.mockRejectedValue(new ArkmePluginError('upstream-upload-rejected','upload failed',true,503))
+  await expect(f.owner.uploadLongArticleImages([file.fileRef])).rejects.toMatchObject({code:'upstream-upload-rejected',imageFailures:[{fileRef:file.fileRef,fileName:'failed.png',phase:'upload'}]})
+  const statePath=join(f.directory,'42','state.json'); const state=JSON.parse(await readFile(statePath,'utf8'))
+  state.files[file.fileRef].size=50 * 1024 * 1024 + 1; await writeFile(statePath,JSON.stringify(state))
+  const restarted=new FileTransfers(f.directory,f.ports,1000)
+  await expect(restarted.uploadLongArticleImages([file.fileRef])).rejects.toMatchObject({imageFailures:[{fileRef:file.fileRef,fileName:'failed.png',phase:'validation'}]})
+})

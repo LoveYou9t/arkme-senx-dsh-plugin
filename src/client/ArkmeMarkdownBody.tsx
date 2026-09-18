@@ -42,13 +42,14 @@ export const arkmeMarkdownStyles = `
 .arkme-markdown .ProseMirror > :first-child { margin-top:0; }
 `
 
-export function ArkmeMarkdownBody({ text, highlightMentions = true, renderLink, textStyle, onMentionClick, isMentionClickable }: {
+export function ArkmeMarkdownBody({ text, highlightMentions = true, renderLink, textStyle, onMentionClick, isMentionClickable, renderImage }: {
   text: string
   highlightMentions?: boolean
   renderLink?: ArkmeLinkRenderer
   textStyle?: Pick<CSSProperties, 'fontSize' | 'lineHeight'> | undefined
   onMentionClick?: ArkmeMentionClickHandler
   isMentionClickable?: ArkmeMentionClickPredicate
+  renderImage?: ((ref: string, alt: string) => ReactNode) | undefined
 }) {
   const rich = (children: ReactNode) => Children.map(children, child => typeof child === 'string'
     ? <ArkmeRichText
@@ -63,13 +64,18 @@ export function ArkmeMarkdownBody({ text, highlightMentions = true, renderLink, 
   return <div style={{ minWidth: 0, maxWidth: '100%', overflow: 'hidden' }} data-arkme-text-format="markdown">
     <style>{arkmeMarkdownStyles}</style>
     <div className="arkme-markdown" style={textStyle}>
-      <Markdown remarkPlugins={[remarkGfm, remarkBreaks, arkmeMarkdownBusinessNodes, arkmeLiteralMarkdownNodes]} components={{
-        span: ({ children, node }) => (node?.properties['data-arkme-markdown-run'] ?? node?.properties['dataArkmeMarkdownRun']) === 'tag' && highlightMentions
+      <Markdown remarkPlugins={[remarkGfm, remarkBreaks, arkmeMarkdownBusinessNodes, [arkmeLiteralMarkdownNodes, { articleImages: Boolean(renderImage) }]]} components={{
+        span: ({ children, node }) => {
+          const ref = node?.properties['dataArkmeImageRef'] ?? node?.properties['data-arkme-image-ref']
+          const alt = String(node?.properties['dataArkmeImageAlt'] ?? node?.properties['data-arkme-image-alt'] ?? '图片')
+          if (typeof ref === 'string') return renderImage?.(ref, alt) ?? <span>[{alt || '图片'}：不可用]</span>
+          return (node?.properties['data-arkme-markdown-run'] ?? node?.properties['dataArkmeMarkdownRun']) === 'tag' && highlightMentions
           ? <ArkmeMentionText
             text={String(children)}
             {...(onMentionClick === undefined ? {} : { onMentionClick })}
             {...(isMentionClickable === undefined ? {} : { isMentionClickable })}
-          /> : <span>{rich(children)}</span>,
+          /> : <span>{rich(children)}</span>
+        },
         p: ({ children }) => <p>{rich(children)}</p>,
         h1: ({ children }) => <h1>{rich(children)}</h1>, h2: ({ children }) => <h2>{rich(children)}</h2>,
         h3: ({ children }) => <h3>{rich(children)}</h3>, h4: ({ children }) => <h4>{rich(children)}</h4>,
