@@ -3545,3 +3545,53 @@ it('confirms article delivery only for the exact chat relation and record owner'
   relationUid='expected-relation'
   await expect(chat.confirmLongArticlePublication('source',input,42)).resolves.toMatchObject({itemUid:'article',sequence:9,localState:'synced'})
 })
+
+
+describe('received Markdown long article detail', () => {
+  function fixture(kind = 'private_chat') {
+    const raw = { relation: { rel_uid: 'rel-snapshot-1' }, record: { payload: {
+      record_uid: 'record-snapshot-1', owner_user_id: 99, creator_user_id: 99,
+      template_kind: 2, display_kind: 1, title: '对方长文',
+      text_content: '# 标题\n![图片](arkme-asset:image-1)',
+      content_payload: { text_format: 'markdown', media_refs: [{ file_asset_uid: 'image-1' }] },
+      version: 3, record_duration_millis: 100, edit_duration_millis: 20,
+    } } }
+    const runtime = {
+      stateStore: { uniqueCode: async () => 'snapshot-test-signing-key' },
+      requireSession: async () => ({ userId: 42, accessToken: 'access', refreshToken: 'refresh' }),
+      authenticatedChatPost: vi.fn(async () => ({ item: raw })),
+      authenticatedPost: vi.fn(),
+    }
+    const media = { richContentBlocks: vi.fn(() => [{ kind: 'image', fileAssetUid: 'image-1', mediaRef: 'controlled' }]) }
+    const source = { openSourceRef: async () => ({ kind, ownerRef: 'chat-1' }) }
+    const chat = new ChatService(runtime as never, source as never, {} as never, media as never, {} as never, {} as never, {} as never, {} as never, {} as never)
+    const actionRef = snapshotActionRef({ senderUserId: 99, recordOwnerUserId: 99, displayKind: 1 })
+    return { chat, runtime, raw, actionRef, media }
+  }
+  it.each(['private_chat', 'group_chat'])('reads other authors through the authorized %s relation', async kind => {
+    const x = fixture(kind)
+    await expect(x.chat.longArticleDetail('source', 'record-snapshot-1', undefined, x.actionRef)).resolves.toMatchObject({
+      title: '对方长文', textFormat: 'markdown', editable: false, version: 3, thinkingDurationMillis: 120,
+      contentBlocks: [{ fileAssetUid: 'image-1', mediaRef: 'controlled' }],
+    })
+    expect(x.runtime.authenticatedChatPost).toHaveBeenCalledWith('/api/v1/chats/records/detail', {
+      chat_session_uid: 'chat-1', record_uid: 'record-snapshot-1', record_owner_user_id: 99, rel_uid: 'rel-snapshot-1', seq: 9,
+    }, expect.anything(), undefined)
+    expect(x.runtime.authenticatedPost).not.toHaveBeenCalled()
+    expect(x.media.richContentBlocks).toHaveBeenCalledWith(x.raw, 42)
+  })
+  it('rejects a different record before requesting the backend', async () => {
+    const x = fixture()
+    await expect(x.chat.longArticleDetail('source', 'other', undefined, x.actionRef)).rejects.toMatchObject({ code: 'long-article-target-invalid' })
+    expect(x.runtime.authenticatedChatPost).not.toHaveBeenCalled()
+  })
+  it('rejects a response belonging to a different record', async () => {
+    const x = fixture(); x.raw.record.payload.record_uid = 'other'
+    await expect(x.chat.longArticleDetail('source', 'record-snapshot-1', undefined, x.actionRef)).rejects.toMatchObject({ code: 'long-article-detail-unavailable' })
+  })
+  it('preserves server denial and never falls back to an owner read', async () => {
+    const x = fixture(); x.runtime.authenticatedChatPost.mockRejectedValueOnce(new Error('not authorized'))
+    await expect(x.chat.longArticleDetail('source', 'record-snapshot-1', undefined, x.actionRef)).rejects.toThrow('not authorized')
+    expect(x.runtime.authenticatedPost).not.toHaveBeenCalled()
+  })
+})

@@ -2125,6 +2125,8 @@ export async function dispatchArkmeHostOperation(
     case 'source.long-article.detail': return await service.longArticleDetail(
       stringParam(params, 'sourceRef'),
       stringParam(params, 'itemUid'),
+      requestSignal,
+      stringParam(params, 'messageActionRef'),
     )
     case 'source.long-article.update': return await service.updateLongArticle(
       stringParam(params, 'sourceRef'),
