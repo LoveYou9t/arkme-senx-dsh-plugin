@@ -190,7 +190,7 @@ export const Config: Schema<Config> = Schema.object({
   updateAllowLocalInstall: Schema.boolean().default(true),
   richMediaRenderEnabled: Schema.boolean().default(true),
   markdownQuickNotesEnabled: Schema.boolean().default(false),
-  markdownLongArticlesEnabled: Schema.boolean().default(false),
+  markdownLongArticlesEnabled: Schema.boolean().default(true),
   richMediaSendEnabled: Schema.boolean().default(true),
   maxUploadBytes: Schema.number().min(1024).max(1024 * 1024 * 1024).default(100 * 1024 * 1024),
   openclawProfile: Schema.string().default('dev'),
