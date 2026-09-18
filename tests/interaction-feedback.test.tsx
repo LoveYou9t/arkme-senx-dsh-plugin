@@ -6,6 +6,7 @@ import { ArkmeComposerToolButton } from '../src/client/ArkmeComposerToolButton.j
 import { ArkmeConversationHeaderIconButton } from '../src/client/ArkmeGroupChatControls.js'
 import { ArkmeCalendarCell } from '../src/client/ArkmeCalendarSurface.js'
 import { ArkmeQuickAddMenu } from '../src/client/ArkmeQuickAdd.js'
+import { ArkmeRightPanelHeader } from '../src/client/ArkmeRightPanelHeader.js'
 
 const css = readFileSync(new URL('../src/client/redesign/interaction-feedback.css', import.meta.url), 'utf8')
 const readSource = (name: string) => readFileSync(new URL(`../src/client/${name}.tsx`, import.meta.url), 'utf8')
@@ -21,6 +22,18 @@ const eligible = (html: string, state: string) => {
 }
 
 describe('shared Arkme interaction feedback', () => {
+  it('preserves unified drawer geometry and disabled state with explicit feedback', () => {
+    const dom = new JSDOM(renderToStaticMarkup(<ArkmeRightPanelHeader title="详情" onClose={vi.fn()}
+      onBack={vi.fn()} closeDisabled />))
+    const buttons = [...dom.window.document.querySelectorAll('button')]
+    expect(buttons).toHaveLength(2)
+    expect(buttons.every(button => button.dataset.arkmeFeedback === 'neutral' && button.style.width === '30px')).toBe(true)
+    expect(buttons[0]!.disabled).toBe(false)
+    expect(buttons[1]!.disabled).toBe(true)
+    expect(dom.window.document.querySelector('style')!.textContent).toContain(':not([data-arkme-feedback]):not(:disabled):hover')
+    dom.window.close()
+  })
+
   it.each([
     ['<button class="arkme-call-recent-contact" data-arkme-feedback="primary">通话</button>', false],
     ['<button data-arkme-feedback="neutral" data-arkme-hover="surface">搜索结果</button>', false],
