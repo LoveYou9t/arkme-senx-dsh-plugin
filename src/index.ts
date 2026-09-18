@@ -399,7 +399,7 @@ export function apply(ctx: Context, config: Config): void {
     requestRestart: async ({ packageName }) => {
       await extensionProfileInstaller.restartDesktopQuarantine({ packageName })
     },
-    isPackageActive: packageName => pluginInventory.list().entries.some(entry =>
+    isPackageActive: async packageName => (await pluginInventory.list()).entries.some(entry =>
       entry.moduleName === packageName && entry.enabled && entry.fiberPhase === 'active'),
   })
   void desktopQuarantine.reconcile().catch(error => {

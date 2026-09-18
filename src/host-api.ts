@@ -2401,7 +2401,7 @@ export async function dispatchArkmeHostOperation(
     case 'extensions.persistent.invoke': {
       const extensionId = stringParam(params, 'extensionId')
       const version = stringParam(params, 'version')
-      const state = requireExtensionManager(extensionManager).persistentClientState(extensionId, version)
+      const state = await requireExtensionManager(extensionManager).persistentClientState(extensionId, version)
       if (!state.mount) {
         throw new ArkmePluginError('extension-runtime-unavailable', '插件不可用，请重启 DSH 后重试', false, 409)
       }
