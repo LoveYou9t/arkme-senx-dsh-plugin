@@ -1,10 +1,8 @@
+import { ArkmeRightPanelHeader } from './ArkmeRightPanelHeader.js'
 import { compareTimelineMessages } from './timeline-message-order.js'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useResizableNoteDetail } from './use-resizable-note-detail.js'
 import { ARKME_CONVERSATION_HEADER_HEIGHT } from './arkme-layout.js'
-import { ArrowLeft } from '@phosphor-icons/react/dist/icons/ArrowLeft'
-import { NotePencil } from '@phosphor-icons/react/dist/icons/NotePencil'
-import { X } from '@phosphor-icons/react/dist/icons/X'
 import type { ArkmeInterwovenDetail, ArkmeInterwovenMention, ArkmeMemberEvent, ArkmeRelatedQuickNoteItem, ArkmeSourceItem, ArkmeTimelineItem } from '../types.js'
 import { ArkmeMark } from './ArkmeFooterAction.js'
 import {
@@ -55,12 +53,15 @@ export function projectInterwovenWindow(
   messages: readonly ArkmeTimelineItem[],
   moments: readonly ArkmeInterwovenMention[],
   hasMoreMessages: boolean,
+  includeFromMillis?: number,
 ): { prelude: ArkmeInterwovenMention[]; inline: ArkmeInterwovenMention[] } {
   const sorted = [...new Map(moments.map(moment => [moment.momentId, moment])).values()]
     .sort((a, b) => a.occurredAtMillis - b.occurredAtMillis || a.momentId.localeCompare(b.momentId))
   const oldest = messages.length === 0 ? Infinity : Math.min(...messages.map(message => message.sendAtMillis))
-  const prelude = sorted.filter(moment => moment.occurredAtMillis <= oldest)
-  const inline = sorted.filter(moment => moment.occurredAtMillis > oldest)
+  const isInline = (moment: ArkmeInterwovenMention) => moment.occurredAtMillis > oldest
+    || includeFromMillis !== undefined && moment.occurredAtMillis >= includeFromMillis
+  const prelude = sorted.filter(moment => !isInline(moment))
+  const inline = sorted.filter(isInline)
   return { prelude: hasMoreMessages && inline.length > 0 ? [] : prelude, inline }
 }
 
@@ -146,20 +147,6 @@ const styles: Record<string, CSSProperties> = {
     borderLeft: '1px solid #e5e6e9',
     background: '#fff', boxShadow: '-12px 0 28px rgba(29,32,40,.055)',
   },
-  asideHeader: {
-    height: 56, flex: 'none', padding: '0 14px 0 17px', display: 'flex', alignItems: 'center',
-    justifyContent: 'space-between', gap: 12, boxSizing: 'border-box',
-  },
-  asideTitleWrap: { minWidth: 0, display: 'flex', alignItems: 'center', gap: 8, color: '#687081' },
-  asideTitle: { margin: 0, color: '#17191c', fontSize: 14, lineHeight: '20px', fontWeight: 600 },
-  back: {
-    width: 30, height: 30, marginLeft: -7, display: 'grid', placeItems: 'center', padding: 0, border: 0,
-    borderRadius: 8, background: 'transparent', color: 'var(--dsw-alias-label-secondary, #68707c)', cursor: 'pointer',
-  },
-  close: {
-    width: 32, height: 32, display: 'grid', placeItems: 'center', padding: 0, border: 0,
-    borderRadius: 9, background: 'transparent', color: '#68707c', cursor: 'pointer',
-  },
   asideBody: { flex: 1, minHeight: 0, overflowY: 'auto', padding: '12px 18px 22px' },
   detailSender: { display: 'flex', alignItems: 'center', gap: 10 },
   detailSenderText: { minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 },
@@ -199,10 +186,12 @@ export function ArkmeInterwovenMentionCard({
   moment,
   rowId,
   onOpen,
+  highlighted = false,
 }: {
   moment: ArkmeInterwovenMention
   rowId?: string
   onOpen: (moment: ArkmeInterwovenMention) => void
+  highlighted?: boolean
 }) {
   const summary = moment.summary.trim() || '群聊提及'
   const accessible = `${moment.groupName}，${moment.senderName}：${summary}`
@@ -212,7 +201,7 @@ export function ArkmeInterwovenMentionCard({
     </time>
     <button
       type="button"
-      style={styles.card}
+      style={{ ...styles.card, ...(highlighted ? { background: 'var(--dsw-alias-bg-active, #eef0fa)', outline: '1px solid var(--dsw-alias-state-business-primary, #a5acff)' } : {}) }}
       aria-label={`打开快记详情：${accessible}`}
       title={accessible}
       onFocus={event => { event.currentTarget.style.boxShadow = '0 0 0 2px var(--dsw-alias-state-business-primary, #3964fe)' }}
@@ -292,15 +281,9 @@ export function ArkmeInterwovenDetailAside({
     : relatedView === 'related-detail' ? '相关快记详情' : '快记详情'
   return <aside ref={detailPanelRef} style={{ ...styles.aside, ...resize.style }} aria-label="快记详情" data-arkme-interwoven-detail>
     {resize.handle}
-    <header style={styles.asideHeader}>
-      <span style={styles.asideTitleWrap}>
-        {relatedView !== 'source-detail' && <button type="button" style={styles.back}
-          aria-label={relatedView === 'related-detail' ? '返回相关快记列表' : '返回快记详情'}
-          onClick={() => { rememberCurrentScroll(); onBackRelated?.() }}><ArrowLeft size={18} aria-hidden /></button>}
-        <NotePencil size={17} aria-hidden /><h3 style={styles.asideTitle}>{title}</h3>
-      </span>
-      <button type="button" style={styles.close} aria-label="关闭快记详情" onClick={onClose}><X size={18} aria-hidden /></button>
-    </header>
+    <ArkmeRightPanelHeader title={title} onClose={onClose} closeLabel="关闭快记详情"
+      onBack={relatedView === 'source-detail' ? undefined : () => { rememberCurrentScroll(); onBackRelated?.() }}
+      backLabel={relatedView === 'related-detail' ? '返回相关快记列表' : '返回快记详情'} />
     <div ref={asideBodyRef} style={styles.asideBody} aria-live="polite" data-arkme-interwoven-aside-body>
       {relatedView === 'related-list'
         ? <ArkmeRelatedQuickNotesList state={relatedState}

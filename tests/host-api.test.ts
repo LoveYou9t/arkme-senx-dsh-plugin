@@ -71,6 +71,9 @@ function fakeService() {
       _options?: unknown,
     ): Promise<{ url: string; title: string } | null> => ({ url, title: '即我 Jotmo' })),
     prepareOutgoingCall: vi.fn(async (input: unknown) => input),
+    createShareCallLink: vi.fn(async (input: unknown) => input),
+    prepareCallReceiver: vi.fn(async () => ({})),
+    claimIncomingCall: vi.fn(async (input: unknown) => input),
     listCallHistory: vi.fn(async (input: unknown) => input),
     callDetail: vi.fn(async (callRef: string) => ({ callRef })),
     retryCallSummary: vi.fn(async (callRef: string) => ({ callRef, status: 'submitted' })),
@@ -84,6 +87,7 @@ function fakeService() {
     searchImages: vi.fn(async (input: unknown) => input),
     searchRecordings: vi.fn(async (input: unknown) => input),
     calendarBuckets: vi.fn(async (input: unknown) => input),
+    calendarChatStatistics: vi.fn(async (input: unknown) => input),
     calendarRecords: vi.fn(async (input: unknown) => input),
     searchContact: vi.fn(async (identifier: string) => ({ identifier })),
     addContact: vi.fn(async (_contactRef: string, options: unknown) => options),
@@ -1109,6 +1113,17 @@ describe('related quick note Host API dispatch', () => {
 })
 
 describe('outgoing call Host API dispatch', () => {
+  it('routes invitation and receiver operations without accepting a browser-supplied owner', async () => {
+    const service = fakeService()
+    await dispatchArkmeHostOperation(service as never, 'calls.invite.create', { mediaType: 'video', userId: 999 })
+    expect(service.createShareCallLink).toHaveBeenCalledWith('video')
+    await dispatchArkmeHostOperation(service as never, 'calls.receiver.prepare', { userId: 999 })
+    expect(service.prepareCallReceiver).toHaveBeenCalledWith()
+    await dispatchArkmeHostOperation(service as never, 'calls.receiver.claim', { callRequestId: 'incoming-1', userId: 999 })
+    expect(service.claimIncomingCall).toHaveBeenCalledWith('incoming-1')
+    await expect(dispatchArkmeHostOperation(service as never, 'calls.invite.create', { mediaType: 'invalid' })).rejects.toThrow()
+    await expect(dispatchArkmeHostOperation(service as never, 'calls.receiver.claim', {})).rejects.toThrow()
+  })
   it('dispatches contact search/add without forwarding browser-owned account fields', async () => {
     const service = fakeService()
     await dispatchArkmeHostOperation(service as never, 'contacts.search', { identifier: 'lin-lin', userId: 999 })
@@ -1303,10 +1318,26 @@ describe('outgoing call Host API dispatch', () => {
       startDate: '2026-09-01', endDate: '2026-09-30', sourceRef: 'signed-topic', bucket_scope_uid: 'not-forwarded',
     })
     await dispatchArkmeHostOperation(service as never, 'calendar.records', {
-      bucketDate: '2026-09-16', sourceRef: 'signed-topic', bucket_scope_kind: 1,
+      bucketDate: '2026-09-16', sourceRef: 'signed-topic', bucket_scope_kind: 1, oldestFirst: true,
     })
     expect(service.calendarBuckets).toHaveBeenCalledWith({ startDate: '2026-09-01', endDate: '2026-09-30', sourceRef: 'signed-topic' })
-    expect(service.calendarRecords).toHaveBeenCalledWith({ bucketDate: '2026-09-16', sourceRef: 'signed-topic', limit: 20 })
+    expect(service.calendarRecords).toHaveBeenCalledWith({ bucketDate: '2026-09-16', sourceRef: 'signed-topic', limit: 20, oldestFirst: true })
+  })
+
+  it.each([{ sendAtMillis: 100 }, { recordUid: 'id' }, { sendAtMillis: 1.5, recordUid: 'id' }, null])('rejects incomplete calendar cursor %j', async cursor => {
+    const service = fakeService()
+    await expect(dispatchArkmeHostOperation(service as never, 'calendar.records', { bucketDate: '2026-09-16', cursor }))
+      .rejects.toMatchObject({ code: 'calendar-cursor-invalid' })
+    expect(service.calendarRecords).not.toHaveBeenCalled()
+  })
+
+  it('uses an authorized source reference for the chat calendar, ignoring caller-supplied session ids', async () => {
+    const service = fakeService()
+    await dispatchArkmeHostOperation(service as never, 'calendar.chat-statistics', {
+      sourceRef: 'signed-chat', timezone: 'Asia/Shanghai', timezoneOffsetMillis: 28800000,
+      chat_session_uid: 'must-not-forward', user_id: 999,
+    })
+    expect(service.calendarChatStatistics).toHaveBeenCalledWith({ sourceRef: 'signed-chat', timezone: 'Asia/Shanghai', timezoneOffsetMillis: 28800000 })
   })
 
   it('rejects missing or oversized interwoven references', async () => {

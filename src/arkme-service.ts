@@ -883,6 +883,10 @@ export class ArkmeService {
     return await this.outgoingCall.prepareOutgoingCall(input)
   }
 
+  async createShareCallLink(mediaType: ArkmeOutgoingCallMediaType) { return await this.outgoingCall.createShareCallLink(mediaType) }
+  async prepareCallReceiver() { return await this.outgoingCall.prepareCallReceiver() }
+  async claimIncomingCall(callRequestId: string) { return await this.outgoingCall.claimIncomingCall(callRequestId) }
+
   async heartbeatOutgoingCall(callRequestId: string): Promise<{ expiresAtMillis: number }> {
     return await this.outgoingCall.heartbeatOutgoingCall(callRequestId)
   }
@@ -1950,12 +1954,19 @@ export class ArkmeService {
     return await this.calendar.bucketPage(options)
   }
 
+  async calendarChatStatistics(options: {
+    sourceRef: string; timezone: string; timezoneOffsetMillis: number; signal?: AbortSignal
+  }): Promise<ArkmeCalendarBucketPage> {
+    return await this.calendar.chatStatistics(options)
+  }
+
   async calendarRecords(
     options: {
       bucketDate: string
       sourceRef?: string
       timezone?: string
       limit?: number
+      oldestFirst?: boolean
       cursor?: ArkmeRecordCursor
       signal?: AbortSignal
     },
