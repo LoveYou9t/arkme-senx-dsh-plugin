@@ -1,8 +1,9 @@
-import redesignCss from './arkme-redesign.css?inline'
+import redesignBaseCss from './arkme-redesign.css?inline'
+import buttonHoverCss from '../arkme-button-hover.css?inline'
 import interactionFeedbackCss from './interaction-feedback.css?inline'
 import { ARKME_NAVIGATION_WIDTH } from '../arkme-layout.js'
 
-const layoutCss = `:root { --arkme-navigation-width: ${ARKME_NAVIGATION_WIDTH}px; }\n${redesignCss}\n${interactionFeedbackCss}`
+const layoutCss = `:root { --arkme-navigation-width: ${ARKME_NAVIGATION_WIDTH}px; }\n${redesignBaseCss}\n${buttonHoverCss}\n${interactionFeedbackCss}`
 
 const REDESIGN_STYLE_ID = '@senguoyun/dsh-arkme/redesign'
 

@@ -6,6 +6,7 @@ import { ArkmeComposerToolButton } from '../src/client/ArkmeComposerToolButton.j
 import { ArkmeConversationHeaderIconButton } from '../src/client/ArkmeGroupChatControls.js'
 import { ArkmeCalendarCell } from '../src/client/ArkmeCalendarSurface.js'
 import { ArkmeQuickAddMenu } from '../src/client/ArkmeQuickAdd.js'
+import { ArkmeRightPanelHeader } from '../src/client/ArkmeRightPanelHeader.js'
 
 const css = readFileSync(new URL('../src/client/redesign/interaction-feedback.css', import.meta.url), 'utf8')
 const readSource = (name: string) => readFileSync(new URL(`../src/client/${name}.tsx`, import.meta.url), 'utf8')
@@ -21,6 +22,38 @@ const eligible = (html: string, state: string) => {
 }
 
 describe('shared Arkme interaction feedback', () => {
+  it('preserves unified drawer geometry and disabled state with explicit feedback', () => {
+    const dom = new JSDOM(renderToStaticMarkup(<ArkmeRightPanelHeader title="详情" onClose={vi.fn()}
+      onBack={vi.fn()} closeDisabled />))
+    const buttons = [...dom.window.document.querySelectorAll('button')]
+    expect(buttons).toHaveLength(2)
+    expect(buttons.every(button => button.dataset.arkmeFeedback === 'neutral' && button.style.width === '30px')).toBe(true)
+    expect(buttons[0]!.disabled).toBe(false)
+    expect(buttons[1]!.disabled).toBe(true)
+    expect(dom.window.document.querySelector('style')!.textContent).toContain(':not([data-arkme-feedback]):not(:disabled):hover')
+    dom.window.close()
+  })
+
+  it.each([
+    ['<button class="arkme-call-recent-contact" data-arkme-feedback="primary">通话</button>', false],
+    ['<button data-arkme-feedback="neutral" data-arkme-hover="surface">搜索结果</button>', false],
+    ['<button role="menuitem" data-arkme-feedback="danger">删除</button>', false],
+    ['<button class="arkme-call-recent-contact">通话</button>', true],
+    ['<button data-arkme-hover="surface">搜索结果</button>', true],
+    ['<button role="menuitem">导出</button>', true],
+    ['<button data-arkme-hover="surface" disabled>搜索结果</button>', false],
+  ])('does not apply both legacy and explicit hover systems to %s', (html, legacyEligible) => {
+    const legacyCss = readFileSync(new URL('../src/client/arkme-button-hover.css', import.meta.url), 'utf8')
+    // JSDOM cannot parse the nested :has/:is icon-button rule. Exercise the
+    // portaled list/menu/contact rules that could override explicit feedback.
+    const selectors = [...legacyCss.matchAll(/([^{}]+):hover\s*\{/g)]
+      .map(match => match[1]!.trim()).filter(selector => !selector.includes('button:is('))
+    const dom = new JSDOM(`<body><nav data-arkme-owned="product-navigation"></nav>${html}</body>`)
+    const button = dom.window.document.querySelector('button')!
+    expect(selectors.some(selector => button.matches(selector))).toBe(legacyEligible)
+    dom.window.close()
+  })
+
   it.each(['hover', 'active', 'focus-visible'])('only opts interactive controls into %s', state => {
     expect(eligible('<button data-arkme-feedback="neutral" />', state)).toBe(true)
     expect(eligible('<button />', state)).toBe(false)

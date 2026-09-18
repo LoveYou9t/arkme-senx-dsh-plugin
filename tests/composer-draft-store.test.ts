@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ArkmeUploadedAsset } from '../src/types.js'
 import {
   ArkmeComposerDraftStore,
+  reconcileArkmeComposerMentions, insertArkmeComposerMentionToken,
   ARKME_COMPOSER_EMOJI_PLACEHOLDER,
   arkmeComposerCanSend,
   arkmeComposerAtomicDeletion,
@@ -23,6 +24,21 @@ function attachment(uid: string, previewUrl?: string): ArkmeComposerAttachment {
 
 describe('Arkme composer draft store', () => {
   beforeEach(() => { vi.restoreAllMocks() })
+
+  it('preserves source-range identities when re-editing escaped Markdown mentions', () => {
+    const mentions = [{ originalIndex: 0, displayName: 'A_B', startIndex: 0, length: 5 }]
+    expect(reconcileArkmeComposerMentions(String.raw`@A\_B`, String.raw`前 @A\_B`, mentions, 'markdown'))
+      .toEqual([{ ...mentions[0], startIndex: 2 }])
+    const inserted = insertArkmeComposerMentionToken({ text: String.raw`@A\_B `, mentions, emojis: [] },
+      { mentionRef: 'new' }, 'C_D', 6, 6, 'markdown')
+    expect(inserted?.text).toBe(String.raw`@A\_B @C\_D `)
+    expect(inserted?.mentions).toEqual([mentions[0], { mentionRef: 'new', displayName: 'C_D', startIndex: 6, length: 5 }])
+  })
+
+  it('removes mention identity when Markdown editing turns it into code', () => {
+    const mentions = [{ originalIndex: 0, displayName: '小明', startIndex: 1, length: 3 }]
+    expect(reconcileArkmeComposerMentions('`@小明', '`@小明`', mentions, 'markdown')).toEqual([])
+  })
 
   it('allows keyboard submission when either text or an attachment is ready', () => {
     expect(arkmeComposerCanSend('文字', 0, false)).toBe(true)

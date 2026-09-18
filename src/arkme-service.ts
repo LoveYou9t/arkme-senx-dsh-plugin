@@ -392,7 +392,10 @@ export class ArkmeService {
       readLocal: async ref => ({ file: (await this.filesOwner().readLocal(ref)).file }),
       uploadRefs: async refs => await this.filesOwner().uploadRefs(refs),
       withReferences: async (refs, userId, persist) => await this.filesOwner().withReferences(refs, userId, persist),
-    }, async () => { await this.realtime.invalidateRecordProjection() })
+    }, async () => { await this.realtime.invalidateRecordProjection() },
+    async (source, text, humans, bots, session, textFormat) => await this.chat.resolveMentions(
+      source, text, text, humans, bots, session, undefined, textFormat,
+    ))
     this.calendar = new CalendarService(this.runtime, this.privacy, this.media, this.record, this.source)
     this.search = new SearchService(this.runtime, this.record, this.media, this.source, this.privacy)
     if (localDshQuery !== undefined) this.search.localDshQuery = localDshQuery
@@ -2083,8 +2086,8 @@ export class ArkmeService {
     await this.realtime.invalidateRecordProjection({ contentOnly: true }); return result
   }
 
-  async listRecordTags(limit = 100, signal?: AbortSignal): Promise<ArkmeRecordTagList> {
-    return await this.record.listTags(limit, signal)
+  async listRecordTags(options: number | { limit?: number; query?: string; cursor?: string } = 100, signal?: AbortSignal): Promise<ArkmeRecordTagList> {
+    return await this.record.listTags(options, signal)
   }
 
   async createTextForConversation(

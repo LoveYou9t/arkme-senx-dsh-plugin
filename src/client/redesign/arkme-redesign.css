@@ -173,11 +173,11 @@ button.arkme-redesign-profile-head { width: 100%; border: 0; background: transpa
 [data-arkme-overlay-scroll-thumb]:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary, #9eadff); outline-offset: -2px; }
 @media (prefers-reduced-motion: reduce) { [data-arkme-overlay-scroll-thumb] { transition: none; } }
 [aria-label="Arkme 会话列表"] [role="tree"][aria-label="Arkme 会话"] {
-  --arkme-directory-card-hover: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, .06));
-  --arkme-directory-card-selected-hover: color-mix(in srgb, #f1f2f6 94%, var(--dsw-alias-label-primary, #17191c));
+  --arkme-directory-card-hover: var(--arkme-control-hover-surface, #f1f2f6);
+  --arkme-directory-card-selected-hover: var(--arkme-directory-card-hover);
 }
 body[data-ds-dark-theme] [aria-label="Arkme 会话列表"] [role="tree"][aria-label="Arkme 会话"] {
-  --arkme-directory-card-selected-hover: color-mix(in srgb, var(--dsw-alias-interactive-bg-active, rgba(255, 255, 255, .1)) 94%, var(--dsw-alias-label-primary, #eee));
+  --arkme-directory-card-hover: var(--dsw-alias-interactive-bg-active, rgba(255, 255, 255, .1));
 }
 [aria-label="Arkme 会话列表"] [role="tree"][aria-label="Arkme 会话"] button[role="treeitem"] {
   transition: background-color .12s ease;
@@ -185,9 +185,6 @@ body[data-ds-dark-theme] [aria-label="Arkme 会话列表"] [role="tree"][aria-la
 @media (hover: hover) {
   [aria-label="Arkme 会话列表"] [role="tree"][aria-label="Arkme 会话"] button[role="treeitem"]:not(:disabled):not([aria-disabled="true"]):not([aria-selected="true"]):hover {
     background-color: var(--arkme-directory-card-hover) !important;
-  }
-  [aria-label="Arkme 会话列表"] [role="tree"][aria-label="Arkme 会话"] button[role="treeitem"][aria-selected="true"]:not(:disabled):not([aria-disabled="true"]):hover {
-    background-color: var(--arkme-directory-card-selected-hover) !important;
   }
 }
 [aria-label="Arkme 会话列表"] [role="tree"][aria-label="Arkme 会话"] button[data-arkme-home-tour-target="harness"][aria-expanded="true"]:not([aria-selected="true"]) {
@@ -1481,13 +1478,13 @@ body[data-ds-dark-theme] .arkme-workspace-dialog-backdrop {
   box-sizing: border-box; color: var(--dsw-alias-label-primary, #202124); font-size: 13px;
 }
 [data-arkme-directory-mode="contacts"] {
-  background: var(--dsw-specific-sidebar-fill, #fff) !important;
+  background: var(--dsw-alias-bg-base, #fff) !important;
   border-left-color: var(--dsw-alias-border-l1, #ececef) !important;
 }
-.arkme-contact-directory { --arkme-contact-directory-header-fill: var(--dsw-specific-sidebar-fill, #fff); padding: 0 6px 18px; overflow-y: auto; overflow-wrap: anywhere; }
+.arkme-contact-directory { --arkme-contact-directory-header-fill: var(--dsw-alias-bg-base, #fff); padding: 0 6px 18px; overflow-y: auto; overflow-wrap: anywhere; }
 .arkme-contact-directory-surface {
   display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%;
-  color: var(--dsw-alias-label-primary, #202124); background: var(--dsw-specific-sidebar-fill, #fff);
+  color: var(--dsw-alias-label-primary, #202124); background: var(--dsw-alias-bg-base, #fff);
 }
 .arkme-contact-directory-surface > .arkme-contact-directory { flex: 1; height: auto; }
 .arkme-contact-directory-toolbar {
@@ -1504,14 +1501,14 @@ body[data-ds-dark-theme] .arkme-workspace-dialog-backdrop {
   width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent;
   color: var(--dsw-alias-label-primary, #202124); font: inherit; font-size: 12px;
 }
-.arkme-contact-directory-search-field input::placeholder { color: var(--dsw-alias-label-tertiary, #92959e); }
+.arkme-directory-search-toolbar input::placeholder { color: var(--dsw-alias-label-tertiary, #92959e); }
 .arkme-contact-directory-search-field:focus-within { outline: 2px solid var(--arkme-focus); outline-offset: 2px; }
 .arkme-contact-directory-search-field button {
   flex: none; display: grid; place-items: center; width: 20px; height: 28px; padding: 0; border: 0;
   border-radius: 6px; background: transparent; color: inherit; cursor: pointer;
 }
 .arkme-contact-directory-search-field button:not([data-arkme-feedback]):hover { background: var(--dsw-alias-interactive-bg-hover, #f6f6f7); }
-.arkme-contact-directory-toolbar [aria-label="添加联系人、群聊或 Bot"] {
+.arkme-directory-search-toolbar button[title="添加"] {
   background: var(--dsw-specific-input-major, #fff) !important;
   border-color: var(--dsw-alias-border-l2, #e2e3e6) !important;
   color: var(--dsw-alias-label-secondary, #555a64) !important;
@@ -1689,7 +1686,8 @@ body[data-ds-dark-theme] .arkme-contact-directory-surface { background: var(--ds
 .arkme-contact-world-title { margin: 0; color: var(--dsw-alias-label-secondary, #68707c); font-size: 14px; line-height: 22px; font-weight: 400; }
 .arkme-contact-world { position: relative; padding-right: 28px; }
 .arkme-contact-world-open { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: flex-end; width: 100%; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--dsw-alias-label-secondary, #68707c); cursor: pointer; }
-.arkme-contact-world-open:hover { background: var(--dsw-alias-bg-hover, rgba(127, 127, 127, .06)); }
+.arkme-contact-world:has(.arkme-contact-world-open:hover) { background: var(--arkme-control-hover-surface, #f1f2f6); border-radius: 8px; }
+.arkme-contact-world-open:hover { background: transparent; }
 .arkme-contact-world-open:focus-visible { outline: 2px solid var(--dsw-alias-state-business-primary, #4778f5); outline-offset: 3px; }
 .arkme-contact-world-error button { position: relative; z-index: 2; }
 .arkme-contact-world-content, .arkme-contact-world-summary { min-width: 0; }
@@ -1934,6 +1932,11 @@ body[data-ds-dark-theme] .arkme-peer-membership-disc { fill: #171717; stroke: #3
   font-size: 12px;
   font-weight: 400;
   line-height: 18px;
+}
+
+/* The two retained directories share the same divider and header appearance. */
+[data-arkme-owned="persistent-sidebar"] [data-arkme-retained-directory] {
+  border-left-color: var(--dsw-alias-border-l1, #ececef) !important;
 }
 
 /* Call contact picker search and invitation focus states. */

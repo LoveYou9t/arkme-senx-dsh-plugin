@@ -1505,6 +1505,23 @@ describe('outgoing call Host API dispatch', () => {
     expect(service.resumeRecordReeditSubmissions).toHaveBeenCalledWith('source-1', true)
   })
 
+  it('forwards re-edit mention identities and explicit removal, rejecting ambiguous input', async () => {
+    const service = fakeService()
+    const mentions = [{ mentionRef: 'signed-ref', displayName: '小明', startIndex: 0, length: 3 }]
+    await dispatchArkmeHostOperation(service as never, 'source.record-reedit.draft.put', {
+      sourceRef: 's', itemUid: 'r', newText: '@小明', mentions, expectedVersion: 7,
+    })
+    expect(service.saveRecordReeditDraft).toHaveBeenCalledWith(expect.objectContaining({ mentions }))
+    await dispatchArkmeHostOperation(service as never, 'source.record-reedit.submit', {
+      sourceRef: 's', itemUid: 'r', newText: '删除', mentions: [], expectedVersion: 7,
+    })
+    expect(service.submitRecordReedit).toHaveBeenCalledWith(expect.objectContaining({ mentions: [] }))
+    await expect(dispatchArkmeHostOperation(service as never, 'source.record-reedit.draft.put', {
+      sourceRef: 's', itemUid: 'r', mentions: [{ ...mentions[0], originalIndex: 0 }], expectedVersion: 7,
+    })).rejects.toThrow()
+    expect(service.saveRecordReeditDraft).toHaveBeenCalledTimes(1)
+  })
+
   it('forwards explicit attachment removal and draft CAS without inventing replacement text', async () => {
     const service = fakeService()
     await dispatchArkmeHostOperation(service as never, 'source.record-reedit.draft.put', {

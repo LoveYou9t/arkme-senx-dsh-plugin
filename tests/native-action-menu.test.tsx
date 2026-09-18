@@ -74,7 +74,25 @@ it('passes native danger, disabled, selected and full-sized configuration throug
   const source = readFileSync('src/client/ArkmeDshMenu.tsx', 'utf8')
   expect(source).toContain('<Menu')
   expect(source).toContain('danger: action.danger')
-  expect(source).not.toMatch(/boxShadow|borderRadius|background:|fontSize|zIndex/)
+  expect(source.slice(source.indexOf('export function ArkmeActionMenu('))).not.toMatch(/boxShadow|borderRadius|background:|fontSize|zIndex/)
+  expect(document.querySelector('.arkme-conversation-actions-menu')).toBeNull()
+  expect(document.querySelector('style')).toBeNull()
+})
+
+it('applies conversation styling only to the explicitly opted-in settings menu', async () => {
+  const renderMenu = (conversationAppearance: boolean) => <ArkmeDshMenu label="会话设置" open
+    conversationAppearance={conversationAppearance} anchor={<button>设置</button>}
+    portal onClose={vi.fn()} onSelect={vi.fn()} items={[{ id: 'export', label: '导出' }]} />
+  await act(async () => root.render(renderMenu(true)))
+  const menu = document.querySelector('[role="menu"]')!
+  expect(host.contains(menu)).toBe(false)
+  expect(menu.matches('[role="menu"]:has(.arkme-conversation-actions-menu-label)')).toBe(true)
+  expect(document.querySelector('style')?.textContent).toContain('.arkme-conversation-actions-menu')
+  await act(async () => root.render(renderMenu(false)))
+  expect(document.querySelector('.arkme-conversation-actions-menu')).toBeNull()
+  expect(document.querySelector('.arkme-conversation-actions-menu-label')).toBeNull()
+  expect(document.querySelector('style')).toBeNull()
+  expect(document.querySelector('[role="menuitem"]')?.textContent).toBe('导出')
 })
 
 it('dismisses when clicking inside the embedded Harness document', async () => {

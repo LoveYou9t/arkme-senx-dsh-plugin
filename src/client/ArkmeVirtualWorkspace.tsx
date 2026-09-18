@@ -1,3 +1,4 @@
+import { directorySearchLayout } from './directory-search-layout.js'
 import { ArkmeActionMenu } from './ArkmeDshMenu.js'
 import { ArkmePinnedCorner } from './ArkmePinnedCorner.js'
 import { useHarnessActivity } from './use-harness-activity.js'
@@ -200,7 +201,7 @@ const styles: Record<string, CSSProperties> = {
     height: 40, flex: 'none', margin: '12px 16px 8px', padding: '0 11px', display: 'flex', alignItems: 'center', gap: 8,
     boxSizing: 'border-box', border: '1px solid #e2e3e6', borderRadius: 11, color: '#92959e', background: '#fff',
   },
-  conversationToolbar: { flex: 'none', margin: '24px 10px 16px', display: 'flex', alignItems: 'center', gap: 8 },
+  conversationToolbar: directorySearchLayout.toolbar,
   embeddedSearchField: { flex: 1, minWidth: 40, margin: 0, cursor: 'pointer', font: 'inherit', fontSize: 12, textAlign: 'left' },
   searchLabel: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
   createTaskButton: {
@@ -1986,12 +1987,12 @@ export function ArkmeNavigation({
       }} />
       {onClose !== undefined && <button data-arkme-feedback="neutral" type="button" style={styles.headerButton} aria-label="关闭 Arkme" title="关闭 Arkme" onClick={onClose}>×</button>}
     </header>}
-    {directory === 'root' && embeddedProductShell && <div data-arkme-window-drag-region="conversation" data-arkme-window-drag-directory="" style={styles.conversationToolbar}>
-      <button data-arkme-feedback="neutral" type="button" data-arkme-directory-search style={{ ...styles.searchField, ...styles.embeddedSearchField }}
+    {directory === 'root' && embeddedProductShell && <div className="arkme-directory-search-toolbar" data-arkme-window-drag-region="conversation" data-arkme-window-drag-directory="" style={styles.conversationToolbar}>
+      <button data-arkme-feedback="neutral" type="button" data-arkme-directory-search style={{ ...directorySearchLayout.field, ...styles.embeddedSearchField }}
         aria-label="搜索对话或消息" title="搜索对话或消息" aria-haspopup="dialog"
         onClick={() => { if (lockedDirectory) showLogin(); else setGlobalSearchOpen(true) }}
       >
-        <MagnifyingGlass size={16} style={{ flex: 'none' }} aria-hidden />
+        <MagnifyingGlass size={16} style={directorySearchLayout.icon} aria-hidden />
         <span data-arkme-directory-search-label style={styles.searchLabel}>搜索对话或消息</span>
       </button>
       {active && authenticated && <ArkmeQuickAddButton

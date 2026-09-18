@@ -1,3 +1,4 @@
+import { arkmeEscapeMarkdownText, arkmeMarkdownPlainText, arkmeMarkdownTextRanges, type ArkmeTextFormat } from '../markdown.js'
 import type { ArkmeMarkdownDraft } from './markdown-editor.js'
 import type { ArkmeSourceItem, ArkmeUploadedAsset } from '../types.js'
 import type { ArkmeLocalFile } from '../file-transfer-contract.js'
@@ -10,6 +11,7 @@ export function arkmeAttachmentId(item: ArkmeComposerAttachment): string { retur
 export function arkmeAttachmentMetadata(item: ArkmeComposerAttachment): ArkmeUploadedAsset | ArkmeLocalFile { return item.localFile ?? item.asset! }
 
 export interface ArkmeComposerMention {
+  originalIndex?: number
   mentionRef?: string
   botRef?: string
   all?: boolean
@@ -59,6 +61,7 @@ export function reconcileArkmeComposerMentions(
   previousText: string,
   nextText: string,
   mentions: readonly ArkmeComposerMention[],
+  textFormat: ArkmeTextFormat = 'plain',
 ): ArkmeComposerMention[] {
   if (previousText === nextText || mentions.length === 0) return [...mentions]
   let prefix = 0
@@ -71,6 +74,7 @@ export function reconcileArkmeComposerMentions(
   const oldEnd = previousText.length - suffix
   const newEnd = nextText.length - suffix
   const delta = newEnd - oldEnd
+  const textRanges = textFormat === 'markdown' ? arkmeMarkdownTextRanges(nextText) : undefined
   return mentions.flatMap(mention => {
     const mentionEnd = mention.startIndex + mention.length
     let nextStart = mention.startIndex
@@ -78,7 +82,9 @@ export function reconcileArkmeComposerMentions(
     else if (prefix >= mentionEnd) nextStart = mention.startIndex
     else return []
     const token = `@${mention.displayName}`
-    if (nextStart < 0 || nextText.slice(nextStart, nextStart + mention.length) !== token) return []
+    const span = nextText.slice(nextStart, nextStart + mention.length)
+    if (nextStart < 0 || (textFormat === 'markdown' ? arkmeMarkdownPlainText(span) : span) !== token
+      || (textRanges && !textRanges.some(range => nextStart >= range.start && nextStart + mention.length <= range.end))) return []
     return [{ ...mention, startIndex: nextStart }]
   })
 }
@@ -193,6 +199,7 @@ export function insertArkmeComposerMentionToken(
   displayName: string,
   selectionStart: number,
   selectionEnd = selectionStart,
+  textFormat: ArkmeTextFormat = 'plain',
 ): ArkmeComposerMentionInsertion | undefined {
   const normalizedDisplayName = displayName.trim()
   const normalizedMentionRef = mention.mentionRef?.trim()
@@ -203,11 +210,11 @@ export function insertArkmeComposerMentionToken(
     && (normalizedBotRef === undefined || normalizedBotRef === '')) return undefined
   const start = Math.max(0, Math.min(snapshot.text.length, Math.trunc(selectionStart)))
   const end = Math.max(start, Math.min(snapshot.text.length, Math.trunc(selectionEnd)))
-  const token = `@${normalizedDisplayName}`
+  const token = textFormat === 'markdown' ? arkmeEscapeMarkdownText(`@${normalizedDisplayName}`) : `@${normalizedDisplayName}`
   const inserted = `${token} `
   const withoutSelection = snapshot.text.slice(0, start) + snapshot.text.slice(end)
   const text = snapshot.text.slice(0, start) + inserted + snapshot.text.slice(end)
-  const mentions = reconcileArkmeComposerMentions(snapshot.text, withoutSelection, snapshot.mentions)
+  const mentions = reconcileArkmeComposerMentions(snapshot.text, withoutSelection, snapshot.mentions, textFormat)
     .map(item => item.startIndex >= start
       ? { ...item, startIndex: item.startIndex + inserted.length }
       : item)

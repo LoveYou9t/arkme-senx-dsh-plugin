@@ -689,7 +689,7 @@ describe('conversation send directory projection', () => {
     expect(arkmeCanReeditTimelineMessage({ ...owned, templateKind: 8, displayKind: 0 })).toBe(false)
   })
 
-  it('opens re-edit in the existing composer while preserving the normal draft and isolating rich suggestions', async () => {
+  it('opens re-edit in the existing composer while preserving the normal draft and supporting mention suggestions', async () => {
     Object.assign(window, { innerHeight: 900 })
     timeline = [{
       itemUid: 'record-reedit-ui', messageActionRef: 'opaque-action', senderName: '我', isMe: true,
@@ -765,7 +765,7 @@ describe('conversation send directory projection', () => {
       reeditComposer.props.onSelectionChange('@', 1, 1)
       await Promise.resolve()
     })
-    expect(renderer!.root.findAllByProps({ 'aria-label': '选择要 @ 的对象' })).toHaveLength(0)
+    expect(renderer!.root.findAllByProps({ 'aria-label': '选择要 @ 的对象' })).toHaveLength(1)
   })
 
   it('does not let ordinary attachment preparation disable the independent re-edit input', async () => {
@@ -926,7 +926,7 @@ describe('conversation send directory projection', () => {
     })
 
     expect(mocks.callArkme).toHaveBeenCalledWith('source.record-reedit.draft.put', {
-      sourceRef: 'source-harness', itemUid: 'record-reedit-close', newText: nextText, expectedVersion: 3,
+      sourceRef: 'source-harness', itemUid: 'record-reedit-close', newText: nextText, mentions: [], expectedVersion: 3,
       attachments: [], expectedDraftRevision: 0,
     })
     expect(renderer!.root.findAllByProps({ 'data-arkme-composer-reedit-target': 'true' })).toHaveLength(0)
@@ -1412,8 +1412,8 @@ describe('conversation send directory projection', () => {
         },
       }
       if (operation === 'records.tags.list') return { items: [
-        { normalizedTag: 'projectalpha', tagText: 'ProjectAlpha', recordCount: 7, latestRecordUid: '', latestSendAtMillis: 0 },
-        { normalizedTag: 'product', tagText: 'Product', recordCount: 3, latestRecordUid: '', latestSendAtMillis: 0 },
+        { normalizedTag: 'projectalpha', tagText: 'ProjectAlpha', recordCount: 7, latestRecordUid: '', latestSendAtMillis: 2 },
+        { normalizedTag: 'product', tagText: 'Product', recordCount: 3, latestRecordUid: '', latestSendAtMillis: 1 },
         { normalizedTag: 'meeting', tagText: '会议', recordCount: 2, latestRecordUid: '', latestSendAtMillis: 0 },
       ] }
       throw new Error(`unexpected operation ${operation}`)
@@ -3717,9 +3717,10 @@ describe('conversation send directory projection', () => {
       await Promise.resolve()
     })
     const tagList = renderer!.root.findByProps({ 'aria-label': '选择标签' })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)) })
     const options = tagList.findAllByProps({ role: 'option' })
     expect(options.map(renderedText)).toEqual(['#ProjectAlpha使用 7 次', '#Product使用 3 次'])
-    expect(mocks.callArkme).toHaveBeenCalledWith('records.tags.list', { limit: 100 }, expect.any(AbortSignal))
+    expect(mocks.callArkme).toHaveBeenCalledWith('records.tags.list', { query: 'o', limit: 100 }, expect.any(AbortSignal))
 
     await act(async () => {
       composer.props.onKeyDown({ key: 'ArrowDown', nativeEvent: { isComposing: false }, preventDefault: vi.fn() })
@@ -3785,7 +3786,54 @@ describe('conversation send directory projection', () => {
     })
     const options = renderer!.root.findByProps({ 'aria-label': '选择标签' }).findAllByProps({ role: 'option' })
     expect(options.map(renderedText)).toEqual(['#FreshTag使用 1 次'])
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)) })
+    expect(mocks.callArkme).toHaveBeenCalledWith('records.tags.list', { query: 'fresh', limit: 100 }, expect.any(AbortSignal))
+  })
+
+  it('retries a failed hashtag request without presenting it as an empty search', async () => {
+    const baseCall = mocks.callArkme.getMockImplementation()!
+    let attempts = 0
+    mocks.callArkme.mockImplementation(async (operation: string, params?: Record<string, unknown>, signal?: AbortSignal) => {
+      if (operation !== 'records.tags.list') return baseCall(operation, params, signal)
+      if (++attempts === 1) throw new Error('network unavailable')
+      return { items: [], hasMore: false }
+    })
+    await act(async () => { renderer = create(<ArkmeSurface productChrome={false} productNavigation={false} />) })
+    const composer = renderer!.root.findByType(ArkmeRichComposerInput)
+    await act(async () => { composer.props.onTextChange('#missing'); composer.props.onSelectionChange('#missing', 8, 8) })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)) })
+    const list = renderer!.root.findByProps({ 'aria-label': '选择标签' })
+    expect(renderedText(list)).toContain('标签加载失败')
+    expect(renderedText(list)).not.toContain('暂无匹配标签')
+    await act(async () => { list.findAllByType('button').find(button => renderedText(button) === '重试')!.props.onClick() })
+    expect(renderedText(list)).toContain('暂无匹配标签')
+    expect(attempts).toBe(2)
+  })
+
+  it('discards late hashtag responses and shows 100 results without pagination controls', async () => {
+    const baseCall = mocks.callArkme.getMockImplementation()!
+    let resolveOld!: (value: unknown) => void
+    const item = (tagText: string) => ({ normalizedTag: tagText, tagText, recordCount: 1, latestRecordUid: '', latestSendAtMillis: 1 })
+    mocks.callArkme.mockImplementation(async (operation: string, params?: Record<string, unknown>, signal?: AbortSignal) => {
+      if (operation !== 'records.tags.list') return baseCall(operation, params, signal)
+      if (params?.query === 'old') return new Promise(resolve => { resolveOld = resolve })
+      return { items: Array.from({ length: Number(params?.limit) }, (_, index) => item(`new-${String(index).padStart(3, '0')}`)), hasMore: true, nextCursor: 'next' }
+    })
+    await act(async () => { renderer = create(<ArkmeSurface productChrome={false} productNavigation={false} />) })
+    const composer = renderer!.root.findByType(ArkmeRichComposerInput)
+    await act(async () => { composer.props.onTextChange('#old'); composer.props.onSelectionChange('#old', 4, 4) })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)) })
+    await act(async () => { composer.props.onTextChange('#new'); composer.props.onSelectionChange('#new', 4, 4) })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)) })
+    await act(async () => { resolveOld({ items: [item('new-stale')], hasMore: false }) })
+    const list = renderer!.root.findByProps({ 'aria-label': '选择标签' })
+    const options = list.findAllByProps({ role: 'option' })
+    expect(options).toHaveLength(100)
+    expect(renderedText(options[99]!)).toBe('#new-099使用 1 次')
+    expect(renderedText(list)).not.toContain('new-stale')
+    expect(mocks.callArkme).toHaveBeenCalledWith('records.tags.list', { query: 'new', limit: 100 }, expect.any(AbortSignal))
     expect(mocks.callArkme.mock.calls.filter(([operation]) => operation === 'records.tags.list')).toHaveLength(2)
+    expect(renderedText(list)).not.toContain('加载更多')
   })
 
   it('requests location permission on the first supported send and records that message', async () => {

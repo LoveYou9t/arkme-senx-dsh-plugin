@@ -4,6 +4,37 @@ import {
 import { useCallback, useEffect, useRef, type ReactNode } from 'react'
 import { watchFrameMenuDismissal } from './frame-menu-dismissal.js'
 
+const conversationMenuCss = `
+[role="menu"]:has(.arkme-conversation-actions-menu-label) {
+  width: 248px; min-width: 248px; max-width: calc(100vw - 24px);
+  padding: 6px 8px; box-sizing: border-box; border-radius: 4px;
+  border: 1px solid var(--dsw-alias-border-l1, #e2e5e9);
+  background: var(--dsw-alias-bg-base, #fff);
+  box-shadow: 0 4px 10px rgba(0,0,0,.1);
+}
+[role="menu"]:has(.arkme-conversation-actions-menu-label) [role="menuitem"] {
+  min-height: 32px; height: auto; margin: 0; width: 100%;
+  padding: 2px 8px; gap: 10px; border-radius: 4px; box-sizing: border-box;
+  font-size: 14px !important; font-weight: 400; line-height: 20px !important;
+}
+[role="menu"]:has(.arkme-conversation-actions-menu-label) [role="menuitem"] > span { font-size: inherit; line-height: inherit; }
+[role="menu"]:has(.arkme-conversation-actions-menu-label) [role="menuitem"] > span:has(> .arkme-conversation-actions-menu-icon) {
+  width: 20px; height: 20px; flex: 0 0 20px; color: inherit;
+}
+[role="menu"]:has(.arkme-conversation-actions-menu-label) [role="separator"] {
+  margin: 8px 0; height: 1px; background: var(--dsw-alias-border-l1, #e2e5e9);
+}
+[role="menu"]:has(.arkme-conversation-actions-menu-label) > [role="presentation"] > [role="presentation"] {
+  padding: 6px 8px; font-size: 13px; font-weight: 400; line-height: 20px;
+  color: var(--dsw-alias-label-secondary);
+}
+.arkme-conversation-actions-menu-icon {
+  display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; flex: 0 0 20px;
+}
+.arkme-conversation-actions-menu-icon > svg,
+.arkme-conversation-actions-menu-icon > span { width: 20px !important; height: 20px !important; }
+`
+
 function isSeparator(entry: MenuEntry): entry is Extract<MenuEntry, { type: 'separator' }> {
   return 'type' in entry && entry.type === 'separator'
 }
@@ -51,12 +82,22 @@ export function ArkmeDshMenu(props: {
   dense?: boolean
   getAnchorRect?: () => DOMRect | null
   className?: string
+  conversationAppearance?: boolean
 }) {
   if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
-    return <Menu
+    return <>
+      {props.conversationAppearance && <style>{conversationMenuCss}</style>}
+      <Menu
       open={props.open}
       anchor={props.anchor}
-      items={props.items}
+      items={props.conversationAppearance ? props.items.map(entry => isSeparator(entry) || isLabel(entry)
+        ? entry : {
+          ...entry,
+          label: <span className="arkme-conversation-actions-menu-label" style={{ display: 'block', width: '100%', fontSize: 14, fontWeight: 400, lineHeight: '20px' }}>{entry.label}</span>,
+          ...(entry.icon === undefined ? {} : {
+            icon: <span className="arkme-conversation-actions-menu-icon">{entry.icon}</span>,
+          }),
+        }) : props.items}
       {...(props.selectedIds === undefined ? {} : { selectedIds: props.selectedIds })}
       onSelect={props.onSelect}
       onClose={props.onClose}
@@ -66,8 +107,10 @@ export function ArkmeDshMenu(props: {
       {...(props.closeOnPointerLeave === undefined ? {} : { closeOnPointerLeave: props.closeOnPointerLeave })}
       {...(props.dense === undefined ? {} : { dense: props.dense })}
       {...(props.getAnchorRect === undefined ? {} : { getAnchorRect: props.getAnchorRect })}
-      {...(props.className === undefined ? {} : { className: props.className })}
-    />
+      {...(props.conversationAppearance
+        ? { className: ['arkme-conversation-actions-menu', props.className].filter(Boolean).join(' ') }
+        : props.className === undefined ? {} : { className: props.className })}
+    /></>
   }
   return <span>
     {props.anchor}

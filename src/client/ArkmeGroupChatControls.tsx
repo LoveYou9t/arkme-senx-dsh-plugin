@@ -1,14 +1,16 @@
+import { ArkmeRightPanelHeader } from './ArkmeRightPanelHeader.js'
 import {
   memo, useCallback, useEffect, useRef, useState,
-  type CSSProperties, type ReactNode, type RefObject,
+  type CSSProperties, type MouseEventHandler, type ReactNode, type RefObject,
 } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  IconDownloadOutline16, IconEllipsisOutline16, type MenuEntry,
+  IconEllipsisOutline16, type MenuEntry,
 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { ArrowLeft } from '@phosphor-icons/react/dist/icons/ArrowLeft'
 import { ArrowUp } from '@phosphor-icons/react/dist/icons/ArrowUp'
 import { CaretRight } from '@phosphor-icons/react/dist/icons/CaretRight'
+import { DownloadSimple } from '@phosphor-icons/react/dist/csr/DownloadSimple'
 import { Plus } from '@phosphor-icons/react/dist/icons/Plus'
 import { Prohibit } from '@phosphor-icons/react/dist/icons/Prohibit'
 import { Sparkle } from '@phosphor-icons/react/dist/icons/Sparkle'
@@ -70,7 +72,7 @@ export const ARKME_CONVERSATION_HEADER_ACTIONS_STYLE: CSSProperties = {
 export const ARKME_CONVERSATION_HEADER_BUTTON_STYLE: CSSProperties = {
   width: 28, height: 28, padding: 2, boxSizing: 'border-box', border: 0, borderRadius: 28, background: 'transparent',
   color: 'var(--dsw-alias-label-secondary)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-  flex: 'none', cursor: 'pointer',
+  flex: 'none', cursor: 'pointer', appearance: 'none',
 }
 
 export const ARKME_CONVERSATION_SETTINGS_MENU_WIDTH = GROUP_SETTINGS_MENU_WIDTH
@@ -122,11 +124,6 @@ const styles: Record<string, CSSProperties> = {
     boxShadow: '0 4px 10px rgba(0,0,0,.1)',
   },
   drawerScrim: { position: 'absolute', inset: 0, zIndex: 7, background: 'transparent' },
-  drawerHeader: {
-    flex: 'none', height: 54, display: 'flex', alignItems: 'center',
-    padding: '0 10px', boxSizing: 'border-box',
-  },
-  drawerTitle: { margin: 0, fontSize: 14, lineHeight: '20px', fontWeight: 600, color: colors.text },
   closeButton: {
     width: 30, height: 30, border: 0, borderRadius: 4, background: 'transparent',
     color: colors.secondary, display: 'grid', placeItems: 'center', cursor: 'pointer', fontSize: 20,
@@ -153,19 +150,6 @@ const styles: Record<string, CSSProperties> = {
     display: 'flex', flexDirection: 'column', background: colors.panel,
     borderLeft: `1px solid ${colors.border}`, borderRadius: '12px 0 0 0',
     boxShadow: '-8px 14px 28px rgba(24, 29, 36, .1)',
-  },
-  restrictionHeader: {
-    flex: 'none', height: 54, padding: '0 10px 0 16px', boxSizing: 'border-box',
-    display: 'flex', alignItems: 'center', borderBottom: `1px solid ${arkmeTheme.borderSoft}`,
-  },
-  restrictionTitle: {
-    minWidth: 0, flex: 1, margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-    color: colors.text, fontSize: 16, lineHeight: '22px', fontWeight: 600,
-  },
-  restrictionClose: {
-    width: 32, height: 32, flex: 'none', padding: 0, border: 0, borderRadius: 8,
-    display: 'grid', placeItems: 'center', background: 'transparent', color: colors.secondary,
-    cursor: 'pointer', transition: 'background-color 120ms ease, color 120ms ease',
   },
   restrictionDescription: {
     flex: 'none', margin: 0, padding: '12px 16px', borderBottom: `1px solid ${colors.border}`,
@@ -325,12 +309,13 @@ function MagicWandIcon() {
 
 export function ArkmeConversationHeaderIconButton(props: {
   label: string
+  title?: string
   children: ReactNode
   buttonRef?: RefObject<HTMLButtonElement>
   hasPopup?: boolean | 'dialog'
   expanded?: boolean
   busy?: boolean
-  onClick: () => void
+  onClick: MouseEventHandler<HTMLButtonElement>
 }) {
   return <button data-arkme-feedback="neutral"
     ref={props.buttonRef}
@@ -339,7 +324,7 @@ export function ArkmeConversationHeaderIconButton(props: {
     aria-haspopup={props.hasPopup === 'dialog' ? 'dialog' : props.hasPopup ? 'menu' : undefined}
     aria-expanded={props.expanded}
     aria-busy={props.busy || undefined}
-    title={props.label}
+    title={props.title ?? props.label}
     style={styles.headerButton}
     onClick={props.onClick}
   >{props.children}</button>
@@ -407,11 +392,9 @@ function GroupMembersDrawer(props: {
   return <>
     <div style={styles.drawerScrim} aria-hidden onPointerDown={event => { event.preventDefault(); props.onClose() }} />
     <aside style={styles.drawer} aria-label="协作者">
-    <div style={styles.drawerHeader}>
-      <h3 style={{ ...styles.drawerTitle, fontSize: 16, fontWeight: 400 }}>协作者{visibleSnapshot === undefined ? '' : `（${visibleSnapshot.items.length}）`}</h3>
-      <span style={{ flex: 1 }} />
-      <button data-arkme-feedback="neutral" type="button" style={{ ...styles.closeButton, width: 'auto', padding: '0 6px', fontSize: 14, fontWeight: 700, color: colors.primary }} onClick={props.onAdd}>添加</button>
-    </div>
+    <ArkmeRightPanelHeader title={<>协作者{visibleSnapshot === undefined ? '' : `（${visibleSnapshot.items.length}）`}</>}
+      onClose={props.onClose} closeLabel="关闭协作者"
+      actions={<button data-arkme-feedback="neutral" type="button" style={{ ...styles.closeButton, height: 30, marginTop: -3, width: 'auto', padding: '0 6px', fontSize: 14, fontWeight: 700, color: colors.primary }} onClick={props.onAdd}>添加</button>} />
     <div style={styles.drawerBody}>
       {loading && items.length === 0 ? <div style={styles.loading}>正在读取群成员…</div> : null}
       {snapshot.error !== undefined && <button data-arkme-feedback="neutral" type="button" role="alert" style={styles.restrictionRetry}
@@ -733,8 +716,8 @@ function AddMembersDrawer(props: {
     if (event.target === event.currentTarget && !busy) props.onClose()
   }}>
     <section style={{ ...styles.drawer, top: 0, width: 360, maxWidth: '92%', zIndex: 36, background: '#fff' }} role="dialog" aria-modal="true" aria-label="添加成员">
-      <div style={{ height: 52, padding: '0 12px', display: 'flex', alignItems: 'center', flex: 'none' }}><h3 style={{ margin: 0, fontSize: 20, lineHeight: '28px', color: colors.text }}>添加成员</h3><span style={{ flex: 1 }} /><button data-arkme-feedback="neutral" type="button" aria-label="关闭" style={{ ...styles.closeButton, width: 28, height: 28, borderRadius: 0, background: 'transparent' }} onClick={props.onClose}><CloseGlyph /></button></div>
-      <div style={{ position: 'relative', margin: '0 12px 8px' }}>
+      <ArkmeRightPanelHeader title="添加成员" onClose={props.onClose} closeLabel="关闭" />
+      <div style={{ position: 'relative', margin: '16px 12px 8px' }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ position: 'absolute', left: 12, top: 11, color: '#aaa' }}><circle cx="11" cy="11" r="6" stroke="currentColor" strokeWidth="2"/><path d="m16 16 4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
         <input style={{ ...styles.dialogInput, height: 40, border: 0, borderRadius: 11, paddingLeft: 36, paddingRight: 30, background: '#f5f5f5' }} value={query} placeholder="搜索" aria-label="搜索成员候选人" disabled={busy} onChange={event => { setQuery(event.target.value) }} />
         {query !== '' ? <button data-arkme-feedback="neutral" type="button" aria-label="清除搜索" disabled={busy} onClick={() => { setQuery('') }} style={{ position: 'absolute', right: 8, top: 8, width: 24, height: 24, border: 0, background: 'transparent', color: colors.secondary, cursor: 'pointer' }}><CloseGlyph /></button> : null}
@@ -1283,10 +1266,6 @@ function GroupSettingsMenu(props: {
       .finally(() => { setBusy(false) })
   }
   const entries: MenuEntry[] = [
-    { id: 'export', label: props.exportBusy
-      ? `正在导出${props.exportProcessed > 0 ? ` · ${String(props.exportProcessed)} 条` : ''}`
-      : '导出', icon: <IconDownloadOutline16 />, disabled: props.exportBusy },
-    { type: 'separator', id: 'personal-separator' },
     { type: 'label', id: 'personal-label', text: '个人设置' },
   ]
   if (effective.selfStatus === 'active') entries.push({ id: 'self-nickname', label: '修改群昵称', icon: <ClientIcon src={icons.selfNickname} size={16} /> })
@@ -1306,22 +1285,28 @@ function GroupSettingsMenu(props: {
     id: 'ai-polish',
     label: <span
       data-arkme-group-ai-polish-entry="true"
+      style={{ display: 'flex', alignItems: 'center', gap: 8 }}
       onClick={(event?: { stopPropagation(): void }) => {
         event?.stopPropagation()
         close()
         props.onAiPolishOpen()
       }}
-    >AI 表达润色 · {polishStatus}</span>,
+    ><span>AI 表达润色</span><span style={{ marginLeft: 'auto', color: colors.secondary, fontSize: 13 }}>{polishStatus}</span><CaretRight size={12} color={colors.secondary} aria-hidden /></span>,
     icon: <MagicWandIcon />,
   })
   if (effective.canRename || (effective.selfRole === 'owner' && effective.selfStatus === 'active')) {
     entries.push({ type: 'separator', id: 'management-separator' }, { type: 'label', id: 'management-label', text: '群管理' })
     if (effective.canRename) entries.push({ id: 'rename', label: '修改群名称', icon: <ClientIcon src={icons.rename} size={16} /> })
     if (effective.selfRole === 'owner' && effective.selfStatus === 'active') {
-      entries.push({ id: 'restrictions', label: '禁止加入名单', icon: <Prohibit size={16} aria-hidden /> })
+      entries.push({ id: 'restrictions', label: <span style={{ display: 'flex', alignItems: 'center' }}>禁止加入名单<CaretRight size={12} color={colors.secondary} style={{ marginLeft: 'auto' }} aria-hidden /></span>, icon: <Prohibit size={16} aria-hidden /> })
     }
   }
   entries.push(
+    { type: 'separator', id: 'export-separator' },
+    { type: 'label', id: 'export-label', text: '聊天记录' },
+    { id: 'export', label: props.exportBusy
+      ? `正在导出${props.exportProcessed > 0 ? ` · ${String(props.exportProcessed)} 条` : ''}`
+      : '导出', icon: <DownloadSimple size={20} weight="regular" aria-hidden />, disabled: props.exportBusy },
     { type: 'separator', id: 'leave-separator' },
     {
       id: 'leave', danger: true,
@@ -1338,6 +1323,7 @@ function GroupSettingsMenu(props: {
   return <ArkmeDshMenu
     open={props.open}
     label="群聊设置"
+    conversationAppearance
     align="end"
     portal
     items={entries}
@@ -1502,17 +1488,8 @@ function GroupJoinRestrictionsPanel(props: {
       aria-labelledby="arkme-group-join-restrictions-title"
       aria-busy={busyMemberRef !== '' || undefined}
     >
-      <div style={styles.restrictionHeader}>
-        <h3 id="arkme-group-join-restrictions-title" style={styles.restrictionTitle}>禁止加入名单</h3>
-        <button data-arkme-feedback="neutral"
-          ref={closeButtonRef}
-          type="button"
-          aria-label="关闭禁止加入名单"
-          disabled={busyMemberRef !== ''}
-          style={{ ...styles.restrictionClose, opacity: busyMemberRef === '' ? 1 : .45 }}
-          onClick={props.onClose}
-        ><X size={18} /></button>
-      </div>
+      <ArkmeRightPanelHeader title="禁止加入名单" titleId="arkme-group-join-restrictions-title"
+        onClose={props.onClose} closeLabel="关闭禁止加入名单" closeRef={closeButtonRef} closeDisabled={busyMemberRef !== ''} />
       <p style={styles.restrictionDescription}>
         名单中的用户无法通过邀请、添加或入群审批再次加入此群。
       </p>

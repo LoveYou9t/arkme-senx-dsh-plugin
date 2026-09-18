@@ -517,6 +517,8 @@ export interface ArkmeRecordTagItem {
 
 export interface ArkmeRecordTagList {
   items: ArkmeRecordTagItem[]
+  hasMore?: boolean
+  nextCursor?: string
 }
 
 export interface ArkmeCreateTextResult {
@@ -2112,6 +2114,7 @@ export interface ArkmeRecordReeditDraft {
   itemUid: string
   title: string
   textContent: string
+  mentions?: import('./record-reedit-contract.js').ArkmeRecordReeditMention[]
   attachments?: import('./record-reedit-contract.js').ArkmeRecordReeditAttachmentSelection[]
   baseVersion: number
   baseContentFingerprint: string

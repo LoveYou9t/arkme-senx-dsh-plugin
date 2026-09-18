@@ -190,7 +190,9 @@ describe('compact conversation directory styles', () => {
       const search = directory.querySelector('button[aria-label="搜索对话或消息"]')!
       expect(search.getAttribute('aria-haspopup')).toBe('dialog')
       const toolbar = search.parentElement!
-      expect((toolbar as HTMLElement).style.margin).toBe('24px 10px 16px')
+      // Match the contacts toolbar's shared grid while retaining the scroll
+      // viewport and full-width conversation-card layout from master.
+      expect((toolbar as HTMLElement).style.margin).toBe('24px 16px 16px')
       const viewport = directory.querySelector<HTMLElement>('[role="tree"]')!
       expect(viewport.style.paddingLeft).toBe('0px')
       expect(viewport.style.paddingRight).toBe('0px')

@@ -1,3 +1,5 @@
+import type { ResolvedMentions } from './mention-metadata-codec.js'
+import { prepareRecordReeditMentions, recordReeditMentionMetadata, recordReeditMentionProjection, type NewMentionResolver } from './record-reedit-mentions.js'
 import { recordManualEditFact } from '../record-edit-history.js'
 import { recordSenderSnapshot } from '../record-sender-snapshot.js'
 import { arkmeEmojiTokenSafePrefix } from '../arkme-emoji-text.js'
@@ -31,6 +33,8 @@ import type {
   ArkmeConversationWriteResult,
   ArkmeCreateFileAssetRecordResult,
   ArkmeCreateTextResult,
+  ArkmeHumanMentionInput,
+  ArkmeBotMentionInput,
   ArkmeLongArticleDetail,
   ArkmeLongArticleDraft,
   ArkmePendingWrite,
@@ -208,15 +212,12 @@ function recordReeditReadContentPayload(raw: unknown): Record<string, unknown> |
   return output
 }
 
-function recordReeditContentPayloadForWrite(
-  contentPayload: Record<string, unknown> | undefined,
-  currentText: string,
-  nextText: string,
-): Record<string, unknown> | undefined {
-  if (contentPayload === undefined) return arkmeHashTagContentPayload(nextText)
+function assertRecordReeditTextEditable(
+  contentPayload: Record<string, unknown> | undefined, currentText: string, nextText: string, hasMentionInputs: boolean,
+): void {
   if (nextText !== currentText
-    && (Object.keys(objectValue(contentPayload.mention_metadata)).length > 0
-      || listValue(contentPayload.location_mentions).length > 0)) {
+    && ((!hasMentionInputs && Object.keys(objectValue(contentPayload?.mention_metadata)).length > 0)
+      || listValue(contentPayload?.location_mentions).length > 0)) {
     throw new ArkmePluginError(
       'record-reedit-rich-text-unsupported',
       '该快记包含 @ 或位置内容，当前只能保持正文不变后修改标题',
@@ -224,7 +225,21 @@ function recordReeditContentPayloadForWrite(
       409,
     )
   }
-  const output = structuredClone(contentPayload)
+}
+
+function recordReeditContentPayloadForWrite(
+  contentPayload: Record<string, unknown> | undefined,
+  currentText: string,
+  nextText: string,
+  mentions?: { metadata: Record<string, unknown> | undefined },
+): Record<string, unknown> | undefined {
+  if (contentPayload === undefined && mentions?.metadata === undefined) return arkmeHashTagContentPayload(nextText)
+  assertRecordReeditTextEditable(contentPayload, currentText, nextText, mentions !== undefined)
+  const output = structuredClone(contentPayload ?? { payload_kind: 1, schema_version: 1, text_state: 1 })
+  if (mentions !== undefined) {
+    if (mentions.metadata === undefined) delete output.mention_metadata
+    else output.mention_metadata = mentions.metadata
+  }
   if (nextText !== currentText) {
     const hashTags = arkmeHashTagPayload(nextText)
     if (hashTags.length > 0) output.hash_tags = hashTags
@@ -306,6 +321,10 @@ export class RecordService {
     private readonly privacy = new ArkmePrivacyVisibilityService(runtime),
     private readonly reeditFiles?: ArkmeRecordReeditFiles,
     onReeditCommitted?: () => Promise<void>,
+    private readonly resolveReeditMentions?: (
+      source: ArkmeSourceRefPayload, text: string, humans: ArkmeHumanMentionInput[], bots: ArkmeBotMentionInput[],
+      session: ArkmeSessionCredentials, textFormat: 'plain' | 'markdown',
+    ) => Promise<ResolvedMentions>,
   ) {
     this.submissions = new RecordReeditSubmissions({
       list: userId => this.runtime.stateStore.listRecordReeditSubmissions(userId),
@@ -395,6 +414,7 @@ export class RecordService {
       if ((input.newText === undefined || input.newText === previous.draft.textContent)
         && (input.newTitle === undefined || input.newTitle.trim() === previous.draft.title)
         && input.expectedVersion === previous.context.baseVersion
+        && (input.mentions === undefined || JSON.stringify(input.mentions) === JSON.stringify(previous.draft.mentions))
         && (input.attachments === undefined || JSON.stringify(input.attachments) === JSON.stringify(previous.draft.attachments))) {
         return recordReeditSubmissionView(previous)
       }
@@ -474,6 +494,13 @@ export class RecordService {
     return { context, ...editor }
   }
 
+  private reeditMentionResolver(owner: RecordReeditOwnerSnapshot, text: string, session: ArkmeSessionCredentials): NewMentionResolver | undefined {
+    const resolve = this.resolveReeditMentions
+    return resolve === undefined ? undefined : (humans, bots) => resolve(
+      owner.source, text, humans, bots, session, arkmeRecordTextFormat(owner.contentPayload),
+    )
+  }
+
   private async prepareRecordReeditCandidate(
     input: ArkmeRecordReeditPrepareInput, owner: RecordReeditOwnerSnapshot, session: ArkmeSessionCredentials, draftOnly: boolean,
   ): Promise<ArkmeRecordReeditPreparedContext> {
@@ -515,7 +542,20 @@ export class RecordService {
     if ((!draftOnly && textContent.trim() === '' && !hasVoice && !hasMedia) || textContent.length > maxTextLength || title.length > 100) {
       throw new ArkmePluginError('record-reedit-content-invalid', '重新编辑的标题或正文长度无效', false)
     }
-    recordReeditContentPayloadForWrite(owner.contentPayload, owner.textContent, textContent)
+    const leadingTrim = candidateText.length - candidateText.trimStart().length
+    const mentions = input.mentions === undefined ? previous?.mentions : input.mentions.map(mention => ({
+      ...mention, startIndex: mention.startIndex - (arkmeRecordTextFormat(owner.contentPayload) === 'markdown' ? 0 : leadingTrim),
+    }))
+    if (mentions !== undefined && (expectedBaseVersion ?? previous?.baseVersion) !== owner.version) {
+      throw new ArkmePluginError('record-reedit-conflict', '快记已变化，请重新打开编辑', false, 409)
+    }
+    if (mentions !== undefined) {
+      const prepared = prepareRecordReeditMentions(owner.contentPayload, owner.textContent, textContent, mentions,
+        owner.source.kind === 'group_chat', arkmeRecordTextFormat(owner.contentPayload))
+      // Drafts persist intent, not a current Chat authorization or a write payload.
+      if (!draftOnly) await recordReeditMentionMetadata(textContent, prepared, this.reeditMentionResolver(owner, textContent, session))
+    }
+    assertRecordReeditTextEditable(owner.contentPayload, owner.textContent, textContent, mentions !== undefined)
     if (input.attachments !== undefined && !draftOnly) {
       for (const item of attachments ?? []) {
         if (item.fileRef !== undefined) await this.recordReeditFiles().readLocal(item.fileRef)
@@ -539,6 +579,7 @@ export class RecordService {
       itemUid,
       title,
       textContent,
+      ...(mentions === undefined ? {} : { mentions }),
       ...(attachments === undefined ? {} : { attachments }),
       baseVersion,
       baseContentFingerprint,
@@ -600,6 +641,7 @@ export class RecordService {
       itemUid,
       title: owner.title,
       textContent: owner.textContent,
+      mentions: recordReeditMentionProjection(owner.contentPayload, owner.textContent, arkmeRecordTextFormat(owner.contentPayload)),
       textFormat: arkmeRecordTextFormat(owner.contentPayload),
       sendAtMillis: owner.sendAtMillis,
       templateKind: owner.templateKind,
@@ -614,6 +656,7 @@ export class RecordService {
       ...(draft === undefined ? {} : { draft: {
         title: draft.title,
         textContent: draft.textContent,
+        mentions: draft.mentions ?? (draft.textContent === owner.textContent ? recordReeditMentionProjection(owner.contentPayload, owner.textContent, arkmeRecordTextFormat(owner.contentPayload)) : []),
         updatedAtMillis: draft.updatedAtMillis,
         baseVersion: draft.baseVersion,
         draftRevision: draft.draftRevision,
@@ -698,7 +741,12 @@ export class RecordService {
       && (draft.attachments === undefined ? !recordReeditHasAttachments(owner.contentPayload) : draft.attachments.length === 0)) {
       throw new ArkmePluginError('record-reedit-content-invalid', '请保留正文或至少一个附件', false)
     }
-    const body = this.recordReeditUpdateBody(owner, draft.title, draft.textContent)
+    const mentionUpdate = draft.mentions === undefined ? undefined : { metadata: await recordReeditMentionMetadata(
+      draft.textContent, prepareRecordReeditMentions(owner.contentPayload, owner.textContent, draft.textContent, draft.mentions,
+        owner.source.kind === 'group_chat', arkmeRecordTextFormat(owner.contentPayload)),
+      this.reeditMentionResolver(owner, draft.textContent, session),
+    ) }
+    const body = this.recordReeditUpdateBody(owner, draft.title, draft.textContent, mentionUpdate)
     if (draft.attachments !== undefined) {
       const selection = recordReeditAttachmentSelection(draft.attachments, owner.contentPayload)
       const fileRefs = selection.flatMap(item => item.fileRef === undefined ? [] : [item.fileRef])
@@ -1101,8 +1149,9 @@ export class RecordService {
     owner: RecordReeditOwnerSnapshot,
     title: string,
     textContent: string,
+    mentions?: { metadata: Record<string, unknown> | undefined },
   ): Record<string, unknown> {
-    const contentPayload = recordReeditContentPayloadForWrite(owner.contentPayload, owner.textContent, textContent)
+    const contentPayload = recordReeditContentPayloadForWrite(owner.contentPayload, owner.textContent, textContent, mentions)
     return {
       record_uid: owner.itemUid,
       template_kind: owner.templateKind,
@@ -1194,15 +1243,22 @@ export class RecordService {
     await Promise.all([this.summary(), this.list(50)])
   }
 
-  async listTags(limit = 100, signal?: AbortSignal): Promise<ArkmeRecordTagList> {
+  async listTags(options: number | { limit?: number; query?: string; cursor?: string } = 100, signal?: AbortSignal): Promise<ArkmeRecordTagList> {
+    const { limit = 100, query, cursor } = typeof options === 'number' ? { limit: options } : options
     const session = await this.runtime.requireSession()
     const data = await this.runtime.authenticatedPost<Record<string, unknown>>(
       '/api/v1/records/tags/list',
-      { limit: Math.max(1, Math.min(200, Math.trunc(limit))) },
+      {
+        limit: Number.isFinite(limit) ? Math.max(1, Math.min(200, Math.trunc(limit))) : 100,
+        ...(query === undefined ? {} : { query }),
+        ...(cursor === undefined ? {} : { cursor }),
+      },
       session,
       signal,
     )
     return {
+      ...(typeof data.has_more === 'boolean' ? { hasMore: data.has_more } : {}),
+      ...(typeof data.next_cursor === 'string' ? { nextCursor: data.next_cursor } : {}),
       items: listValue(data.items).flatMap(raw => {
         const item = objectValue(raw)
         const tagText = stringValue(item.tag_text ?? item.tagText).trim()

@@ -1,3 +1,4 @@
+import { parseArkmeRecordReeditMentions } from './record-reedit-contract.js'
 import { recordOwnerId } from './record-owner-id.js'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { readDirectoryPage } from './directory-reader.js'
@@ -1449,7 +1450,11 @@ export async function dispatchArkmeHostOperation(
     }
     case 'records.summary': return await service.summary()
     case 'records.list': return await service.list(numberParam(params, 'limit', 30), cursorParam(params))
-    case 'records.tags.list': return await service.listRecordTags(numberParam(params, 'limit', 100), requestSignal)
+    case 'records.tags.list': return await service.listRecordTags({
+      limit: numberParam(params, 'limit', 100),
+      ...(typeof params?.query === 'string' ? { query: params.query } : {}),
+      ...(typeof params?.cursor === 'string' ? { cursor: params.cursor } : {}),
+    }, requestSignal)
     case 'records.tags.query': {
       const cursorSendAt = numberParam(params, 'cursorSendAt', 0)
       const cursorRecordUid = stringParam(params, 'cursorRecordUid').trim()
@@ -2147,6 +2152,7 @@ export async function dispatchArkmeHostOperation(
         sourceRef: stringParam(params, 'sourceRef'),
         itemUid: stringParam(params, 'itemUid'),
         ...(params.newText === undefined ? {} : { newText: stringParam(params, 'newText') }),
+        ...(params.mentions === undefined ? {} : { mentions: parseArkmeRecordReeditMentions(params.mentions) }),
         ...(params.newTitle === undefined ? {} : { newTitle: stringParam(params, 'newTitle') }),
         ...(params.attachments === undefined ? {} : { attachments: parseArkmeRecordReeditAttachments(params.attachments) }),
         ...(params.expectedDraftRevision === undefined ? {} : { expectedDraftRevision: numberParam(params, 'expectedDraftRevision', -1) }),
@@ -2168,6 +2174,7 @@ export async function dispatchArkmeHostOperation(
         sourceRef: stringParam(params, 'sourceRef'),
         itemUid: stringParam(params, 'itemUid'),
         ...(params.newText === undefined ? {} : { newText: stringParam(params, 'newText') }),
+        ...(params.mentions === undefined ? {} : { mentions: parseArkmeRecordReeditMentions(params.mentions) }),
         ...(params.newTitle === undefined ? {} : { newTitle: stringParam(params, 'newTitle') }),
         ...(params.attachments === undefined ? {} : { attachments: parseArkmeRecordReeditAttachments(params.attachments) }),
         ...(params.expectedDraftRevision === undefined ? {} : { expectedDraftRevision: numberParam(params, 'expectedDraftRevision', -1) }),
@@ -2414,7 +2421,7 @@ export async function dispatchArkmeHostOperation(
     case 'extensions.persistent.invoke': {
       const extensionId = stringParam(params, 'extensionId')
       const version = stringParam(params, 'version')
-      const state = requireExtensionManager(extensionManager).persistentClientState(extensionId, version)
+      const state = await requireExtensionManager(extensionManager).persistentClientState(extensionId, version)
       if (!state.mount) {
         throw new ArkmePluginError('extension-runtime-unavailable', '插件不可用，请重启 DSH 后重试', false, 409)
       }

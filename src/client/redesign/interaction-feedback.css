@@ -9,7 +9,7 @@
 
 [data-arkme-feedback] {
   --arkme-control-feedback-fill: transparent;
-  --arkme-control-hover: var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, .06));
+  --arkme-control-hover: var(--arkme-control-hover-surface, var(--dsw-alias-interactive-bg-hover, rgba(38, 49, 72, .06)));
   --arkme-control-pressed: var(--dsw-alias-interactive-bg-active, rgba(38, 49, 72, .10));
   background-image: linear-gradient(var(--arkme-control-feedback-fill), var(--arkme-control-feedback-fill)) !important;
   transition: --arkme-control-feedback-fill 120ms ease !important;
