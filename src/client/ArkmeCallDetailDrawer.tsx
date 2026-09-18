@@ -91,7 +91,7 @@ export function ArkmeCallDetailDrawer({ item, onClose, initialVideoUrl }: { item
     </div>
     <div style={styles.content} aria-busy={loading}>
       {loading ? <div role="status" style={styles.state}>加载中…</div>
-        : error ? <div role="alert" style={styles.state}>{error}{callRef && <button type="button" style={styles.retry} onClick={() => { setRevision(value => value + 1) }}>重试</button>}</div>
+        : error ? <div role="alert" style={styles.state}>{error}{callRef && <button data-arkme-feedback="neutral" type="button" style={styles.retry} onClick={() => { setRevision(value => value + 1) }}>重试</button>}</div>
           : <>
             {detail && <ArkmeCallDetailContent key={detail.callRef} compact detail={detail} detailState="ready" initialVideoUrl={initialVideoUrl} selectedItem={{
               callRef: detail.callRef,
@@ -100,7 +100,7 @@ export function ArkmeCallDetailDrawer({ item, onClose, initialVideoUrl }: { item
               acceptedAtMillis: detail.acceptedAtMillis,
               durationSeconds: detail.durationSeconds,
             }} />}
-            {(detail?.transcriptFailed || detail?.transcriptPending || detail?.summaryStatus === 'pending') && <button type="button" style={styles.retry} onClick={() => { setRevision(value => value + 1) }}>刷新</button>}
+            {(detail?.transcriptFailed || detail?.transcriptPending || detail?.summaryStatus === 'pending') && <button data-arkme-feedback="neutral" type="button" style={styles.retry} onClick={() => { setRevision(value => value + 1) }}>刷新</button>}
           </>}
     </div>
   </aside>

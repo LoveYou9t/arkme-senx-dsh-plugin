@@ -478,9 +478,9 @@ export function ArkmeRecordingTimeline({ items, dayStartMillis, playheadMillis, 
         </span>
       </div>
       <span style={styles.zoomControls}>
-        {!followPlayback && <button type="button" style={styles.followButton} onClick={() => { setFollowPlayback(true) }}>跟随播放</button>}
-        <button type="button" style={{ ...styles.zoomButton, ...(!hasRecording || zoomIndex === 0 ? { opacity: .3, cursor: 'default' } : {}) }} aria-label="缩小" title={hasRecording ? '缩小' : undefined} disabled={!hasRecording || zoomIndex === 0} onClick={() => { zoomTo(zoomIndex - 1) }}><MagnifyingGlassMinus size={16} aria-hidden /></button>
-        <button type="button" style={{ ...styles.zoomButton, ...(!hasRecording || zoomIndex === RECORDING_TIMELINE_ZOOM_LEVELS_SECONDS.length - 1 ? { opacity: .3, cursor: 'default' } : {}) }} aria-label="放大" title={hasRecording ? '放大' : undefined} disabled={!hasRecording || zoomIndex === RECORDING_TIMELINE_ZOOM_LEVELS_SECONDS.length - 1} onClick={() => { zoomTo(zoomIndex + 1) }}><MagnifyingGlassPlus size={16} aria-hidden /></button>
+        {!followPlayback && <button data-arkme-feedback="neutral" type="button" style={styles.followButton} onClick={() => { setFollowPlayback(true) }}>跟随播放</button>}
+        <button data-arkme-feedback="neutral" type="button" style={{ ...styles.zoomButton, ...(!hasRecording || zoomIndex === 0 ? { opacity: .3, cursor: 'default' } : {}) }} aria-label="缩小" title={hasRecording ? '缩小' : undefined} disabled={!hasRecording || zoomIndex === 0} onClick={() => { zoomTo(zoomIndex - 1) }}><MagnifyingGlassMinus size={16} aria-hidden /></button>
+        <button data-arkme-feedback="neutral" type="button" style={{ ...styles.zoomButton, ...(!hasRecording || zoomIndex === RECORDING_TIMELINE_ZOOM_LEVELS_SECONDS.length - 1 ? { opacity: .3, cursor: 'default' } : {}) }} aria-label="放大" title={hasRecording ? '放大' : undefined} disabled={!hasRecording || zoomIndex === RECORDING_TIMELINE_ZOOM_LEVELS_SECONDS.length - 1} onClick={() => { zoomTo(zoomIndex + 1) }}><MagnifyingGlassPlus size={16} aria-hidden /></button>
         <span style={{ ...styles.zoomHint, ...(!hasRecording ? { opacity: .3 } : {}) }}>滚轮缩放</span>
       </span>
     </div>
@@ -488,7 +488,7 @@ export function ArkmeRecordingTimeline({ items, dayStartMillis, playheadMillis, 
     <div style={styles.track} data-timeline-layer="detail">
       {playheadVisible && <div style={{ ...styles.playTooltip, left: `clamp(0px, calc(${String(playheadPercent)}% - 56px), calc(100% - 112px))` }}>
         <time style={{ color: canPlayAtSelection ? desktop.text : desktop.tertiary }}>{timeLabel(playheadMillis)}</time>
-        <button type="button" disabled={!canPlayAtSelection && !isPlaying && !playbackLoading}
+        <button data-arkme-feedback="neutral" type="button" disabled={!canPlayAtSelection && !isPlaying && !playbackLoading}
           style={{ ...styles.playControl, ...(!canPlayAtSelection && !isPlaying && !playbackLoading ? { opacity: .5, cursor: 'default' } : {}) }}
           onClick={onTogglePlayback}
           aria-label={playbackLoading ? '取消录音加载' : isPlaying ? '暂停录音' : '播放录音'}
@@ -530,7 +530,7 @@ export function ArkmeRecordingTimeline({ items, dayStartMillis, playheadMillis, 
       >
         {visibleItems.map((item, index) => {
           const layout = recordingSegmentLayout(item.startAtMillis, item.endAtMillis, windowStart, windowEnd)
-          return <button
+          return <button data-arkme-feedback="neutral"
             key={`${item.item.itemId}:${String(item.startAtMillis)}`}
             data-recording-segment-index={index}
             type="button"
@@ -574,7 +574,7 @@ export function ArkmeRecordingTimeline({ items, dayStartMillis, playheadMillis, 
       <details ref={legendRef} open={legendOpen} style={styles.legend} data-timeline-layer="speakers" onToggle={event => { setLegendOpen(event.currentTarget.open) }}>
       <summary style={styles.legendSummary} aria-label="当前窗口说话人图例">
         <span style={styles.legendItems}>
-          {visibleSpeakers.slice(0, 3).map(speaker => <button type="button" key={speaker.key} aria-label={`编辑说话人 ${speaker.label}`} style={styles.legendItem} onClick={event => { editSpeaker(event, speaker.items[0]!) }}>
+          {visibleSpeakers.slice(0, 3).map(speaker => <button data-arkme-feedback="neutral" type="button" key={speaker.key} aria-label={`编辑说话人 ${speaker.label}`} style={styles.legendItem} onClick={event => { editSpeaker(event, speaker.items[0]!) }}>
             {speaker.avatarRef === undefined
               ? <span aria-hidden style={{ ...styles.legendDot, background: recordingSpeakerColor(speaker.colorIndex) }} />
               : <ArkmeUserAvatar avatarRef={speaker.avatarRef} size={12} label={`${speaker.label}头像`} />}

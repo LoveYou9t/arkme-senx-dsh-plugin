@@ -1986,18 +1986,23 @@ export class ArkmeSdk {
   async calendarBuckets(options: {
     startDate: string
     endDate: string
+    sourceRef?: string
     timezone?: string
     signal?: AbortSignal
   }): Promise<ArkmeCalendarBucketPage> {
     return await this.call<ArkmeCalendarBucketPage>('calendar.buckets', {
       startDate: options.startDate,
       endDate: options.endDate,
+      ...(options.sourceRef === undefined ? {} : { sourceRef: options.sourceRef }),
       ...(options.timezone === undefined ? {} : { timezone: options.timezone }),
     }, options.signal)
   }
 
   async calendarRecords(options: {
     bucketDate: string
+    sourceRef?: string
+    /** For scoped self/topic views; navigate to the start of the selected day. */
+    oldestFirst?: boolean
     timezone?: string
     limit?: number
     cursor?: ArkmeCalendarRecordCursor
@@ -2005,10 +2010,20 @@ export class ArkmeSdk {
   }): Promise<ArkmeCalendarDayRecordPage> {
     return await this.call<ArkmeCalendarDayRecordPage>('calendar.records', {
       bucketDate: options.bucketDate,
+      ...(options.sourceRef === undefined ? {} : { sourceRef: options.sourceRef }),
+      ...(options.oldestFirst === undefined ? {} : { oldestFirst: options.oldestFirst }),
       ...(options.timezone === undefined ? {} : { timezone: options.timezone }),
       ...(options.limit === undefined ? {} : { limit: options.limit }),
       ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
     }, options.signal)
+  }
+
+  /** Service-owned daily chat counts and exact first-message anchors, shared with Flutter. */
+  async calendarChatStatistics(options: {
+    sourceRef: string; timezone: string; timezoneOffsetMillis: number; signal?: AbortSignal
+  }): Promise<ArkmeCalendarBucketPage> {
+    const { signal, ...params } = options
+    return await this.call<ArkmeCalendarBucketPage>('calendar.chat-statistics', params, signal)
   }
 
   /** Search current-account server records, including retained DSH navigation identity. */

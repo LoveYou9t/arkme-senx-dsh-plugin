@@ -30,17 +30,17 @@ export function ArkmeRightPanelHeader({ title, titleId, subtitle, actions, onClo
   backDisabled?: boolean
 }) {
   return <header style={styles.header} data-arkme-right-panel-header>
-    <style>{`.arkme-right-panel-header-button:not(:disabled):hover { background: ${arkmeTheme.hover} !important; }
+    <style>{`.arkme-right-panel-header-button:not([data-arkme-feedback]):not(:disabled):hover { background: ${arkmeTheme.hover} !important; }
       .arkme-right-panel-header-button:focus-visible { outline: 2px solid ${arkmeTheme.accent}; outline-offset: 2px; }
       .arkme-right-panel-header-button:disabled { opacity: .45; cursor: default !important; }`}</style>
-    {onBack !== undefined && <button ref={backRef} type="button" className="arkme-right-panel-header-button" style={styles.button}
+    {onBack !== undefined && <button data-arkme-feedback="neutral" ref={backRef} type="button" className="arkme-right-panel-header-button" style={styles.button}
       aria-label={backLabel} disabled={backDisabled} onClick={onBack}><ArrowLeft size={18} aria-hidden /></button>}
     <div style={styles.heading}>
       <h3 id={titleId} style={styles.title}>{title}</h3>
       {subtitle !== undefined && subtitle !== null && subtitle !== '' && <div style={styles.subtitle}>{subtitle}</div>}
     </div>
     {actions !== undefined && <div style={styles.actions}>{actions}</div>}
-    <button ref={closeRef} type="button" className="arkme-right-panel-header-button" style={styles.button}
+    <button data-arkme-feedback="neutral" ref={closeRef} type="button" className="arkme-right-panel-header-button" style={styles.button}
       aria-label={closeLabel} title="关闭" disabled={closeDisabled} onClick={onClose}><X size={18} aria-hidden /></button>
   </header>
 }

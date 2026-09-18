@@ -15,15 +15,14 @@ export const arkmeComposerToolButtonStyle: CSSProperties = Object.freeze({
   background: 'transparent',
   color: arkmeTheme.secondary,
   cursor: 'pointer',
-  transition: 'none',
 })
 
-/** Shared toolbar geometry; the Arkme button stylesheet supplies hover feedback. */
+/** Shared geometry and feedback for composer tools, including portaled panels. */
 export const ArkmeComposerToolButton = forwardRef<
   HTMLButtonElement,
   Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'style'>
 >(
   function ArkmeComposerToolButton({ type = 'button', ...props }, ref) {
-    return <button {...props} ref={ref} type={type} style={arkmeComposerToolButtonStyle} />
+    return <button {...props} data-arkme-feedback="neutral" ref={ref} type={type} style={arkmeComposerToolButtonStyle} />
   },
 )
