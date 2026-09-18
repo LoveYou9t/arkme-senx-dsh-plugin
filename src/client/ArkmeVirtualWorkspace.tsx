@@ -1,4 +1,7 @@
+import { directorySearchLayout } from './directory-search-layout.js'
 import { ArkmePinnedCorner } from './ArkmePinnedCorner.js'
+import { useHarnessActivity } from './use-harness-activity.js'
+import { watchHarnessSessionHover } from './harness-session-hover.js'
 import { nextArkmeUnreadConversation } from '../conversation-attention.js'
 import { ArkmeDirectoryWindow } from './ArkmeDirectoryWindow.js'
 import { arkmeSourceAllowsUserWrite } from '../topic-policy.js'
@@ -35,6 +38,7 @@ import { ArkmeRichText } from './ArkmeRichText.js'
 import { arkmeAuthStore } from './auth-store.js'
 import { ArkmeTopicCreateDialog } from './ArkmeTopicCreateDialog.js'
 import { ArkmeQuickAddButton } from './ArkmeQuickAdd.js'
+import { startEmbeddedHarnessSession } from './harness-new-session.js'
 import {
   cachedSelectedSource, clearLastNavigationCache, readLastNavigationCache,
   readNavigationCache, reconcileSelectedSource, writeNavigationCache, type ArkmeNavigationCache,
@@ -77,6 +81,7 @@ import {
 import {
   arkmeTopicPathNames, buildArkmeSourceTree, flattenVisibleArkmeSourceTree, type ArkmeSourceTreeRow,
 } from './source-tree.js'
+import { watchSelfTopicMenuHover } from './self-topic-menu-hover.js'
 import arkmeUserAddIconBase64 from '../../assets/icons/user-add-linear.svg'
 
 export interface ArkmeNavigationProps {
@@ -204,8 +209,7 @@ const styles: Record<string, CSSProperties> = {
     height: 40, flex: 'none', margin: '12px 16px 8px', padding: '0 11px', display: 'flex', alignItems: 'center', gap: 8,
     boxSizing: 'border-box', border: '1px solid #e2e3e6', borderRadius: 11, color: '#92959e', background: '#fff',
   },
-  conversationToolbar: { flex: 'none', margin: '24px 16px 16px', display: 'flex', alignItems: 'center', gap: 8 },
-  embeddedSearchField: { flex: 1, minWidth: 0, margin: 0 },
+  conversationToolbar: directorySearchLayout.toolbar,
   createTaskButton: {
     width: 40, height: 40, flex: 'none', display: 'grid', placeItems: 'center', padding: 0,
     border: '1px solid #e2e3e6', borderRadius: 11, background: '#fff', color: '#555a64', cursor: 'pointer',
@@ -401,7 +405,6 @@ export function ArkmeDirectoryRow({
     aria-label={ariaLabel}
     aria-selected={selected}
     disabled={disabled}
-    title={title}
     data-arkme-home-tour-target={homeTourTarget}
     style={{ ...styles.chatRow, ...(selected ? styles.chatRowActive : {}) }}
     onClick={onClick}
@@ -548,19 +551,45 @@ export function ArkmeArkoRow({
   </button>
 }
 
-export function DeepSeekHarnessRow({ selected, onClick }: { selected: boolean; onClick(): void }) {
+export function DeepSeekHarnessRow({ selected, onClick, accountScope, hoverEnabled = true }: { selected: boolean; onClick(): void; accountScope?: string | undefined; hoverEnabled?: boolean }) {
+  const rowRef = useRef<HTMLButtonElement>(null)
+  const activateRef = useRef(onClick)
+  activateRef.current = onClick
+  useEffect(() => {
+    if (rowRef.current && accountScope && hoverEnabled) return watchHarnessSessionHover(rowRef.current, accountScope, () => activateRef.current())
+  }, [accountScope, hoverEnabled])
+  const activity = useHarnessActivity(accountScope)
+  const statuses = activity === undefined ? [] : [
+    { kind: 'pending', label: '待处理', items: activity.pending },
+    { kind: 'running', label: '进行中', items: activity.running },
+    { kind: 'unread', label: '待查看', items: activity.unread },
+  ].filter(status => status.items.length > 0)
+  const summary = statuses.map(status => `${status.items.length} ${status.label}`).join(' · ')
+  const total = statuses.reduce((sum, status) => sum + status.items.length, 0)
+  const running = (activity?.running.length ?? 0) > 0
+  const destination = activity?.current === null ? '新会话' : activity?.current?.title
   return <button
+    ref={rowRef}
     type="button"
     data-arkme-home-tour-target="harness"
     role="treeitem"
     aria-selected={selected}
+    aria-label={['DeepSeek Harness', destination, summary].filter(Boolean).join('，')}
     style={{ ...styles.chatRow, ...(selected ? styles.chatRowActive : {}) }}
     onClick={onClick}
   >
-    <span style={styles.avatar} aria-hidden><img src="/favicon.svg" alt="" width={28} height={28} /></span>
-    <span style={styles.chatContent}>
+    <span style={{ ...styles.avatar, overflow: 'visible' }} aria-hidden>
+      <img src="/favicon.svg" alt="" width={28} height={28} />
+      {total > 0 && <span data-arkme-harness-badge data-idle={!running ? 'true' : undefined} data-kind={statuses[0]!.kind === 'pending' ? 'pending' : activity!.unread.length > 0 ? 'unread' : 'running'}>{total > 99 ? '99+' : total}</span>}
+    </span>
+    <span data-arkme-harness-label style={styles.chatContent}>
       <span style={styles.chatTop}><span style={styles.entryName}>DeepSeek Harness</span></span>
-      <span style={styles.chatBottom}><span style={styles.preview}>你的 DeepSeek 智能助手</span></span>
+      <span style={styles.chatBottom}>{!running
+        ? <span data-arkme-harness-destination style={styles.preview}>{destination ?? (accountScope === undefined ? '你的 DeepSeek 智能助手' : '')}</span>
+        : <span data-arkme-harness-summary>{statuses.map(status => <span key={status.kind} data-arkme-harness-status={status.kind}>
+          <i aria-hidden />{status.items.length} {status.label}
+        </span>)}</span>}
+      </span>
     </span>
   </button>
 }
@@ -934,6 +963,7 @@ export function ArkmeNavigation({
   const directoryScrollTopRef = useRef(0)
   const directoryContextMenuRef = useRef<HTMLDivElement>(null)
   const directoryContextRequestRef = useRef(0)
+  const selfEntryRef = useRef<HTMLButtonElement>(null)
   const topicRowElementsRef = useRef(new Map<string, HTMLDivElement>())
   const createdHighlightTimeoutsRef = useRef<Array<ReturnType<typeof setTimeout>>>([])
   const createdHighlightFramesRef = useRef<number[]>([])
@@ -998,6 +1028,14 @@ export function ArkmeNavigation({
   const currentAccountKey = authenticated && auth.userId !== undefined
     ? `${auth.environment}:${String(auth.userId)}`
     : undefined
+  useEffect(() => {
+    const anchor = selfEntryRef.current
+    if (anchor === null || !active || !authenticated || directory !== 'root') return
+    return watchSelfTopicMenuHover(anchor, () => {
+      activateNativeEntry()
+      onActivateSurface?.()
+    })
+  }, [activateNativeEntry, active, authenticated, directory, onActivateSurface])
   useEffect(() => { setChatPreview(undefined) }, [currentAccountKey, active])
   const [traceNavigation] = useState(createHomeTourTrace)
   useEffect(() => {
@@ -1276,7 +1314,7 @@ export function ArkmeNavigation({
         ? reconcileSelectedSource(selected ?? cachedSelected, loaded)
           ?? (next === 'send_to_self' ? loaded.find(source => source.kind === 'send_to_self') : undefined)
         : undefined
-      if (restored !== undefined) arkmeUi.selectSource(restored)
+      if (restored !== undefined && !arkmeUi.updateSelectedSourceProjection(restored)) arkmeUi.selectSource(restored)
       persistCache({
         directory: next,
         sources: { [next]: loaded },
@@ -1461,7 +1499,7 @@ export function ArkmeNavigation({
     const restored = activeRef.current && ui.mode === 'source'
       ? reconcileSelectedSource(selected ?? cachedSelected, loaded)
       : undefined
-    if (restored !== undefined) arkmeUi.selectSource(restored)
+    if (restored !== undefined && !arkmeUi.updateSelectedSourceProjection(restored)) arkmeUi.selectSource(restored)
     persistCache({
       directory: 'root',
       sources: { root: loaded },
@@ -1948,8 +1986,11 @@ export function ArkmeNavigation({
   }
 
   const renderSelfEntry = (onClick?: () => void) => (<button
+          ref={selfEntryRef}
           type="button" role="treeitem"
           data-arkme-home-tour-target="send-to-self"
+          aria-haspopup="tree"
+          aria-expanded="false"
           aria-selected={activeDirectoryEntryId === undefined && ui.mode === 'source' && isArkmeSelfWorkspaceSource(ui.selectedSource)}
           style={{ ...styles.chatRow, ...(activeDirectoryEntryId === undefined && ui.mode === 'source' && isArkmeSelfWorkspaceSource(ui.selectedSource) ? styles.chatRowActive : {}) }}
           onClick={onClick ?? (() => {
@@ -1984,7 +2025,7 @@ export function ArkmeNavigation({
     data-arkme-layout={embeddedProductShell ? 'product-directory' : undefined}
     data-arkme-directory-compact={compactDirectory ? 'true' : undefined}
   >
-    {directory === 'send_to_self' && <header style={styles.header}>
+    {directory === 'send_to_self' && <header data-arkme-window-drag-region="conversation" style={styles.header}>
       <button
         type="button" style={styles.headerButton} aria-label="返回 Arkme 会话列表" title="返回"
         onClick={() => { changeDirectory('root') }}
@@ -1996,13 +2037,13 @@ export function ArkmeNavigation({
       }} />
       {onClose !== undefined && <button type="button" style={styles.headerButton} aria-label="关闭 Arkme" title="关闭 Arkme" onClick={onClose}>×</button>}
     </header>}
-    {directory === 'root' && embeddedProductShell && <div style={styles.conversationToolbar}>
-      <label style={{ ...styles.searchField, ...styles.embeddedSearchField }}>
-        <MagnifyingGlass size={16} aria-hidden />
+    {directory === 'root' && embeddedProductShell && <div className="arkme-directory-search-toolbar" data-arkme-window-drag-region="conversation" data-arkme-window-drag-directory="" style={styles.conversationToolbar}>
+      <label style={directorySearchLayout.field}>
+        <MagnifyingGlass size={16} style={directorySearchLayout.icon} aria-hidden />
         <input
           value=""
           readOnly
-          style={styles.searchInput}
+          style={directorySearchLayout.input}
           placeholder="搜索对话或消息"
           aria-label="搜索对话或消息"
           aria-haspopup="dialog"
@@ -2015,6 +2056,11 @@ export function ArkmeNavigation({
         />
       </label>
       {active && authenticated && <ArkmeQuickAddButton
+        onNewDshSession={showHarnessEntry ? () => startEmbeddedHarnessSession(() => {
+          activateNativeEntry()
+          arkmeUi.showHarness()
+          onActivateSurface?.()
+        }) : undefined}
         notificationActivationRevision={ui.notificationActivationRevision ?? 0}
         onBlockingOverlayChange={setQuickAddBlockingOpen}
         onContactAdd={showContactAdd}
@@ -2068,6 +2114,8 @@ export function ArkmeNavigation({
         {authenticated && <ArkmeNotificationPermissionBanner />}
         {showHarnessEntry && showHarnessInSearch && <DeepSeekHarnessRow
           selected={activeDirectoryEntryId === undefined && ui.mode === 'harness'}
+          accountScope={currentAccountKey}
+          hoverEnabled={active && authenticated}
           onClick={() => {
             activateNativeEntry()
             arkmeUi.showHarness()
@@ -2258,11 +2306,12 @@ export function ArkmeNavigation({
       onOpenRecord={item => {
         if (item.targetSource === undefined) return
         closeGlobalSearch()
-        arkmeUi.showConversationTarget(item.targetSource, item.recordUid, item.sendAtMillis)
+        arkmeUi.showConversationTarget(item.targetSource, item.recordUid, item.sendAtMillis, item.recordOwnerUserId)
       }}
       onOpenDshSession={sessionId => {
+        if (onOpenDshSession === undefined) throw new Error('当前客户端无法打开 DSH 对话')
+        onOpenDshSession(sessionId)
         closeGlobalSearch()
-        onOpenDshSession?.(sessionId)
       }}
       onClose={closeGlobalSearch}
     />, document.body)}

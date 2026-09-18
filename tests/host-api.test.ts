@@ -103,6 +103,7 @@ function fakeService() {
     sourceMemberRecords: vi.fn(async (sourceRef: string, memberRef: string, mode: string, options: unknown) => ({ sourceRef, memberRef, mode, options })),
     messageReadReceiptSummaries: vi.fn(async (sourceRef: string, items: unknown, options: unknown) => ({ sourceRef, items, options })),
     messageReadReceiptDetail: vi.fn(async (sourceRef: string, itemUid: string, sequence: number, options: unknown) => ({ sourceRef, itemUid, sequence, options })),
+    recordEditHistoryPage: vi.fn(async () => ({ items: [], hasMore: false })),
     messageSnapshotDetail: vi.fn(async (sourceRef: string, actionRef: string, options: unknown) => ({ sourceRef, actionRef, options })),
     officialAuthorProfile: vi.fn(async () => ({ userId: 11, displayName: '阿森', avatarRef: 'author-avatar-ref' })),
     openOfficialAuthorPrivateChat: vi.fn(async () => ({ source: { sourceRef: 'official-author-source' } })),
@@ -1296,6 +1297,18 @@ describe('outgoing call Host API dispatch', () => {
     })
   })
 
+  it('forwards the signed calendar source reference for both month and day reads', async () => {
+    const service = fakeService()
+    await dispatchArkmeHostOperation(service as never, 'calendar.buckets', {
+      startDate: '2026-09-01', endDate: '2026-09-30', sourceRef: 'signed-topic', bucket_scope_uid: 'not-forwarded',
+    })
+    await dispatchArkmeHostOperation(service as never, 'calendar.records', {
+      bucketDate: '2026-09-16', sourceRef: 'signed-topic', bucket_scope_kind: 1,
+    })
+    expect(service.calendarBuckets).toHaveBeenCalledWith({ startDate: '2026-09-01', endDate: '2026-09-30', sourceRef: 'signed-topic' })
+    expect(service.calendarRecords).toHaveBeenCalledWith({ bucketDate: '2026-09-16', sourceRef: 'signed-topic', limit: 20 })
+  })
+
   it('rejects missing or oversized interwoven references', async () => {
     const service = fakeService()
 
@@ -1461,6 +1474,23 @@ describe('outgoing call Host API dispatch', () => {
     expect(service.resumeRecordReeditSubmissions).not.toHaveBeenCalled()
     await dispatchArkmeHostOperation(service as never, 'source.record-reedit.resume', { sourceRef: 'source-1', reconcile: true })
     expect(service.resumeRecordReeditSubmissions).toHaveBeenCalledWith('source-1', true)
+  })
+
+  it('forwards re-edit mention identities and explicit removal, rejecting ambiguous input', async () => {
+    const service = fakeService()
+    const mentions = [{ mentionRef: 'signed-ref', displayName: '小明', startIndex: 0, length: 3 }]
+    await dispatchArkmeHostOperation(service as never, 'source.record-reedit.draft.put', {
+      sourceRef: 's', itemUid: 'r', newText: '@小明', mentions, expectedVersion: 7,
+    })
+    expect(service.saveRecordReeditDraft).toHaveBeenCalledWith(expect.objectContaining({ mentions }))
+    await dispatchArkmeHostOperation(service as never, 'source.record-reedit.submit', {
+      sourceRef: 's', itemUid: 'r', newText: '删除', mentions: [], expectedVersion: 7,
+    })
+    expect(service.submitRecordReedit).toHaveBeenCalledWith(expect.objectContaining({ mentions: [] }))
+    await expect(dispatchArkmeHostOperation(service as never, 'source.record-reedit.draft.put', {
+      sourceRef: 's', itemUid: 'r', mentions: [{ ...mentions[0], originalIndex: 0 }], expectedVersion: 7,
+    })).rejects.toThrow()
+    expect(service.saveRecordReeditDraft).toHaveBeenCalledTimes(1)
   })
 
   it('forwards explicit attachment removal and draft CAS without inventing replacement text', async () => {
@@ -1675,3 +1705,11 @@ it('routes long article images and durable draft metadata without trusting prepa
   await dispatchArkmeHostOperation(service as never, 'source.long-article.draft.put', {...input,document:{type:'doc'}})
   expect(service.putLongArticleDraft).toHaveBeenCalledWith(expect.objectContaining({textFormat:'markdown',images:input.images,recordUid:'record-uid',relationUid:'relation-uid',document:{type:'doc'}}))
 })
+ it('dispatches revision reads with only signed source/action, cursor and cancellation', async () => {
+  const service = fakeService()
+  const signal = new AbortController().signal
+  await dispatchArkmeHostOperation(service as never, 'source.record-edit-history', {
+    sourceRef: 'source', messageActionRef: 'action', cursorEditAt: 100, recordUid: 'forged', userId: 999,
+  }, undefined, undefined, undefined, undefined, signal)
+  expect(service.recordEditHistoryPage).toHaveBeenCalledWith('source', 'action', 100, signal)
+ })

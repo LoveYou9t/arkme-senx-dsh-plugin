@@ -1,13 +1,27 @@
 import { arkmeSourceAllowsUserWrite } from '../topic-policy.js'
-import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import type { ArkmeSourceItem, ArkmeTopicDissolveProgress, ArkmeTopicDissolveTask } from '../types.js'
+import { Button, IconNewChatOutline16, type MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
+import { conversationMenuLayer, conversationMenuPosition } from './conversation-menu-layer.js'
+import type { ArkmeEnvironment, ArkmeSourceItem, ArkmeTopicDissolveProgress, ArkmeTopicDissolveTask } from '../types.js'
 import { arkmeSelfDirectorySources } from './source-list.js'
 import { ArkmeTopicDissolveDialog, ArkmeTopicRenameDialog } from './ArkmeTopicManagementDialog.js'
 import {
   aggregateArkmeSourceTreeRecordCounts, buildArkmeSourceTree, canMoveArkmeTopicToParent,
   flattenVisibleArkmeSourceTree, sortArkmeSourceTree,
 } from './source-tree.js'
+import {
+  readSelfTopicSortPreference, writeSelfTopicSortPreference, type ArkmeSelfTopicSort,
+} from './self-topic-sort-preference.js'
 import { ARKME_TOPIC_HIERARCHY_MAX_LEVEL, toggleTopicCollapsedState } from './ArkmeVirtualWorkspace.js'
+import { ArkmeDshViewOptionsMenu } from './ArkmeDshMenu.js'
+import { CONVERSATION_MENU_COLORS, CONVERSATION_MENU_LAYOUT as menuLayout, CONVERSATION_MENU_SURFACE, CONVERSATION_SELECTOR_CSS } from './conversation-selector-style.js'
+import { watchConversationMenuScrollbars } from './conversation-menu-scrollbars.js'
+import { useSelfTopicExpansion } from './self-topic-expansion-preference.js'
+import {
+  SELF_TOPIC_MENU_CLOSE, SELF_TOPIC_MENU_OPEN, SELF_TOPIC_MENU_POSITION,
+  type SelfTopicMenuRequest,
+} from './self-topic-menu-bridge.js'
 
 export interface ArkmeSourceBreadcrumbSegment {
   key: string
@@ -24,7 +38,7 @@ export interface ArkmeSelfTopicOption {
 }
 
 /** Matches the three topic-order choices offered by the mobile topic list. */
-export type ArkmeSelfTopicSort = 'latest' | 'most' | 'custom'
+export type { ArkmeSelfTopicSort } from './self-topic-sort-preference.js'
 
 export type ArkmeSelfTopicChildCreator = (parent: ArkmeSourceItem, parentLevel: number) => void
 export type ArkmeSelfTopicRenamer = (topic: ArkmeSourceItem, title: string) => Promise<ArkmeSourceItem>
@@ -39,62 +53,110 @@ interface ArkmeTopicMovePlan {
   parent: ArkmeSourceItem | undefined
   insertBefore: ArkmeSourceItem | undefined
   indicatorSourceRef: string
+  indicatorDepth: number
   before: boolean
   into: boolean
 }
 
+export type ArkmeTopicDropPosition = 'before' | 'into' | 'after'
+
+/** Split a topic row into a narrow reorder edge and a generous nesting center. */
+export function arkmeTopicDropPosition(
+  clientY: number,
+  rect: Pick<DOMRect, 'top' | 'height'>,
+): ArkmeTopicDropPosition {
+  if (rect.height <= 0) return 'into'
+  const ratio = (clientY - rect.top) / rect.height
+  if (ratio < 0.22) return 'before'
+  if (ratio > 0.78) return 'after'
+  return 'into'
+}
+
+/** Return one frame of proportional list scrolling while a drag hugs an edge. */
+export function arkmeTopicDragAutoScrollDelta(
+  clientX: number,
+  clientY: number,
+  rect: Pick<DOMRect, 'left' | 'right' | 'top' | 'bottom'>,
+  edgeSize = 44,
+  minimumSpeed = 4,
+  maximumSpeed = 18,
+): number {
+  if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return 0
+  const safeEdgeSize = Math.max(1, Math.min(edgeSize, (rect.bottom - rect.top) / 2))
+  const speed = (distance: number): number => Math.round(
+    minimumSpeed + (maximumSpeed - minimumSpeed) * Math.min(1, Math.max(0, distance / safeEdgeSize)),
+  )
+  if (clientY < rect.top + safeEdgeSize) return -speed(rect.top + safeEdgeSize - clientY)
+  if (clientY > rect.bottom - safeEdgeSize) return speed(clientY - (rect.bottom - safeEdgeSize))
+  return 0
+}
+
 const colors = {
   text: '#171923', secondary: '#6f747d', border: '#e1e2e5', surface: '#fff',
-  selected: '#eef1f8',
+  selected: CONVERSATION_MENU_COLORS.selected,
 }
+
+const dshSidebarSurface = CONVERSATION_MENU_SURFACE.background
 
 const styles: Record<string, CSSProperties> = {
   breadcrumb: { position: 'relative', minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 10 },
   fixedTitle: { flex: 'none', color: colors.text, fontSize: 15, lineHeight: '24px', fontWeight: 600, whiteSpace: 'nowrap' },
-  selector: {
-    minWidth: 0, maxWidth: 'min(420px, 50vw)', height: 30, display: 'inline-flex', alignItems: 'center', gap: 6,
-    padding: '0 9px 0 10px', border: `1px solid ${colors.border}`, borderRadius: 8,
-    background: colors.surface, color: colors.text, font: 'inherit', fontSize: 12, cursor: 'pointer',
-  },
-  selectorOpen: { borderColor: '#b9c4e8', background: '#f8f9ff' },
+  selector: { maxWidth: 'min(420px, 50vw)' },
   selectorText: { minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', overflow: 'hidden', whiteSpace: 'nowrap' },
-  selectorPathRoot: { minWidth: 0, flex: '1 1 42%', overflow: 'hidden', textOverflow: 'ellipsis', color: colors.secondary },
-  selectorPathCurrent: { minWidth: 0, flex: '1 1 58%', overflow: 'hidden', textOverflow: 'ellipsis', color: colors.text },
+  selectorPathRoot: { minWidth: 0, flex: '1 1 42%', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--dsw-alias-label-secondary, #626872)' },
+  selectorPathCurrent: { minWidth: 0, flex: '1 1 58%', overflow: 'hidden', textOverflow: 'ellipsis', color: 'inherit' },
   selectorPathSeparator: { flex: 'none', padding: '0 3px', color: '#a0a5af' },
   selectorPathEllipsis: { flex: 'none', padding: '0 2px', color: '#a0a5af' },
-  caret: { width: 12, height: 12, flex: 'none', color: colors.secondary, transition: 'transform .16s ease' },
   menu: {
-    position: 'absolute', zIndex: 100, top: 36, left: 0, width: 260, maxHeight: 'min(680px, calc(100vh - 116px))',
-    display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: 5, boxSizing: 'border-box', border: `1px solid ${colors.border}`, borderRadius: 10,
-    background: colors.surface, boxShadow: '0 14px 32px rgba(23,25,35,.12)',
+    ...CONVERSATION_MENU_SURFACE,
+    position: 'absolute', zIndex: 100, top: 36, left: 0, width: menuLayout.width,
+    maxWidth: `min(calc(100vw - 24px), var(--arkme-topic-menu-available-width, ${menuLayout.width}px))`,
+    maxHeight: `min(${menuLayout.maxHeight}px, calc(100vh - 116px))`,
+    display: 'flex', flexDirection: 'column', overflow: 'hidden', padding: `${menuLayout.paddingY}px ${menuLayout.paddingX}px`,
+    boxSizing: 'border-box',
+    color: 'var(--dsw-alias-label-primary, #171923)', fontSize: menuLayout.titleFontSize, lineHeight: menuLayout.lineHeight,
   },
-  menuList: { minHeight: 0, overflowY: 'auto', paddingBottom: 44 },
+  menuListViewport: { position: 'relative', minHeight: 0, display: 'flex', flexDirection: 'column', marginRight: -menuLayout.paddingX },
+  menuList: { minHeight: 0, overflowY: 'auto', paddingBottom: menuLayout.listBottomPadding },
+  menuListFade: {
+    position: 'absolute', left: 0, right: menuLayout.paddingX, bottom: 0, height: menuLayout.fadeHeight, pointerEvents: 'none',
+    background: `linear-gradient(to bottom, transparent, ${dshSidebarSurface})`,
+  },
   option: {
-    width: '100%', minHeight: 32, display: 'flex', alignItems: 'center', gap: 8, padding: '0 9px', border: 0,
-    borderRadius: 7, background: 'transparent', color: colors.text, font: 'inherit', fontSize: 12, textAlign: 'left', cursor: 'pointer',
+    width: '100%', minHeight: menuLayout.rowHeight, display: 'flex', alignItems: 'center', gap: 8, padding: '0 8px', border: 0,
+    borderRadius: 8, background: 'transparent', color: 'inherit', font: 'inherit', fontSize: menuLayout.titleFontSize,
+    lineHeight: menuLayout.lineHeight, textAlign: 'left', cursor: 'pointer',
   },
-  aggregateOption: { gap: 2, padding: '0 9px 0 0' },
+  aggregateOption: { gap: 2, padding: '0 8px 0 0' },
   optionSelected: { background: colors.selected, fontWeight: 600 },
   optionLabel: { minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  topicRow: { position: 'relative', minHeight: 32, display: 'flex', alignItems: 'center', gap: 2, borderRadius: 7 },
-  topicRowHover: { background: '#f3f4f7' },
-  topicRowDropTarget: { background: '#f3f5ff' },
-  topicRowDropBefore: { boxShadow: 'inset 0 2px 0 #5870d8' },
-  topicRowDropAfter: { boxShadow: 'inset 0 -2px 0 #5870d8' },
-  topicRowDropInto: { outline: '1px solid #8fa0e9' },
+  topicRow: { position: 'relative', minHeight: menuLayout.rowHeight, display: 'flex', alignItems: 'center', gap: 2, borderRadius: 8 },
+  topicRowHover: { background: CONVERSATION_MENU_COLORS.hover },
+  topicRowSelected: { background: colors.selected, fontWeight: 600 },
+  topicHierarchyGuide: {
+    position: 'absolute', top: -menuLayout.rowGap, bottom: 0, width: 1, background: '#e7e9ed', pointerEvents: 'none',
+  },
+  topicRowDropInto: { background: '#eef2ff', outline: '1px solid #8295e5', outlineOffset: -1 },
+  topicDropLine: {
+    position: 'absolute', zIndex: 2, right: 4, height: 2, borderRadius: 0, background: '#5870d8', pointerEvents: 'none',
+  },
+  topicDropIntoBadge: {
+    position: 'absolute', zIndex: 3, right: 6, top: 5, height: 22, display: 'inline-flex', alignItems: 'center',
+    padding: '0 6px', borderRadius: 5, background: '#dce4ff', color: '#445bbd', fontSize: 10, fontWeight: 600,
+    pointerEvents: 'none',
+  },
   topicToggle: {
     width: 24, height: 28, flex: 'none', display: 'grid', placeItems: 'center', padding: 0, border: 0,
     borderRadius: 6, background: 'transparent', color: colors.secondary, cursor: 'pointer',
   },
   topicSpacer: { width: 24, height: 28, flex: 'none', display: 'grid', placeItems: 'center', color: '#c1c5cd' },
   topicSelect: {
-    minWidth: 0, minHeight: 32, flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px 0 2px',
-    border: 0, borderRadius: 7, background: 'transparent', color: colors.text, font: 'inherit', fontSize: 12,
-    textAlign: 'left', cursor: 'pointer',
+    minWidth: 0, minHeight: menuLayout.rowHeight, flex: 1, display: 'flex', alignItems: 'center', gap: 6, padding: '0 8px 0 2px',
+    border: 0, borderRadius: 8, background: 'transparent', color: 'inherit', font: 'inherit', fontSize: menuLayout.titleFontSize,
+    lineHeight: menuLayout.lineHeight, textAlign: 'left', cursor: 'pointer',
   },
-  topicSelectSelected: { background: colors.selected, fontWeight: 600 },
   topicName: { minWidth: 0, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  topicCount: { flex: 'none', minWidth: 18, color: '#9298a3', fontSize: 11, fontWeight: 400, textAlign: 'right' },
+  topicCount: { flex: 'none', minWidth: 18, color: 'var(--dsw-alias-label-tertiary, #9298a3)', fontSize: menuLayout.secondaryFontSize, lineHeight: menuLayout.lineHeight, fontWeight: 400, textAlign: 'right' },
   topicCountHidden: { visibility: 'hidden' },
   childCreate: {
     width: 28, height: 28, flex: 'none', display: 'grid', placeItems: 'center', padding: 0, border: 0,
@@ -117,18 +179,10 @@ const styles: Record<string, CSSProperties> = {
   },
   topicManageActionHover: { background: '#f3f4f7' },
   topicManageDanger: { color: '#d74646' },
-  sortGroup: { display: 'flex', alignItems: 'center', gap: 3, padding: '3px 4px 6px', borderBottom: `1px solid ${colors.border}` },
-  sortButton: {
-    minWidth: 0, height: 24, flex: 1, padding: '0 6px', border: 0, borderRadius: 6, background: 'transparent',
-    color: colors.secondary, font: 'inherit', fontSize: 11, cursor: 'pointer',
-  },
-  sortButtonActive: { background: '#eef1f8', color: '#38466f', fontWeight: 600 },
-  currentPath: { padding: '5px 8px 6px', borderBottom: `1px solid ${colors.border}`, color: colors.secondary, fontSize: 11, lineHeight: '16px', overflowWrap: 'anywhere' },
-  createFooter: { position: 'absolute', right: 0, bottom: 9, left: 0, zIndex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' },
-  createButton: {
-    width: 'auto', height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-    padding: '0 10px', border: `1px solid ${colors.border}`, borderRadius: 14, background: 'rgba(255,255,255,.94)',
-    boxShadow: '0 4px 12px rgba(23,25,35,.12)', color: '#4b62c6', font: 'inherit', fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer',
+  currentPath: { flex: 'none', padding: '5px 8px 6px', borderBottom: `1px solid ${colors.border}`, color: 'var(--dsw-alias-label-secondary, #6f747d)', fontSize: menuLayout.secondaryFontSize, lineHeight: menuLayout.lineHeight, overflowWrap: 'anywhere' },
+  createFooter: {
+    flex: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 0 0',
+    background: dshSidebarSurface,
   },
   dissolveProgressTrigger: {
     marginLeft: 'auto', minWidth: 0, height: 28, display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -148,6 +202,10 @@ const styles: Record<string, CSSProperties> = {
     borderRadius: 7, color: '#5870d8', fontSize: 11,
   },
   rootDropZoneActive: { background: '#f3f5ff', borderColor: '#7187df' },
+}
+
+function ArkmeSelfTopicMenuPortal({ external, children }: { external: boolean; children: ReactNode }) {
+  return external && typeof document !== 'undefined' ? createPortal(children, conversationMenuLayer(document)) : children
 }
 
 function ArkmeTopicLoadingIcon() {
@@ -257,21 +315,35 @@ function topicDirectRecordCount(source: ArkmeSourceItem | undefined): number {
 }
 
 function topicCountLabel(count: number | undefined): string {
-  return count === undefined ? '…' : count.toLocaleString('zh-CN')
+  return count === undefined ? '正在加载数量' : count.toLocaleString('zh-CN')
+}
+
+function ArkmeTopicCount({ count, error, hidden }: { count: number | undefined; error?: string | undefined; hidden?: boolean }) {
+  return <span style={{ ...styles.topicCount, ...(hidden ? styles.topicCountHidden : {}) }} data-arkme-topic-count=""
+    aria-label={count === undefined ? error ? '数量暂不可用' : '正在加载数量' : `${topicCountLabel(count)} 条快记或消息`}
+    title={count === undefined && error ? '数量加载失败，请重试' : undefined}>
+    {count !== undefined ? topicCountLabel(count) : error ? '—'
+      : <span role="status" aria-label="正在加载数量"><ArkmeTopicLoadingIcon /></span>}
+  </span>
 }
 
 export function ArkmeSourceBreadcrumb({
-  selectedSource, sources, loading = false, error, onSelect, onSelectAggregate,
+  userId, environment = 'prod', selectedSource, sources, loading = false, countsReady, error, onSelect, onSelectAggregate,
   onCreateTopic, onCreateChildTopic, onRenameTopic, onDissolveTopic, onRetry, onMoveTopic, activeDissolve,
-  tourOpen,
+  tourOpen, trigger = 'visible', onOpen,
 }: {
+  userId?: number | undefined
+  environment?: ArkmeEnvironment
   selectedSource: ArkmeSourceItem | undefined
   sources: readonly ArkmeSourceItem[]
   loading?: boolean
+  countsReady?: boolean | undefined
   error?: string
   tourOpen?: boolean | undefined
+  trigger?: 'visible' | 'none'
   onSelect(source: ArkmeSourceItem): void
   onSelectAggregate(): void
+  onOpen?(): void
   onCreateTopic?(): void
   onCreateChildTopic?: ArkmeSelfTopicChildCreator
   onRenameTopic?: ArkmeSelfTopicRenamer
@@ -285,10 +357,12 @@ export function ArkmeSourceBreadcrumb({
   ): Promise<void>
   activeDissolve?: ArkmeTopicDissolveTask
 }) {
-  const [manualOpen, setOpen] = useState(false)
-  const open = tourOpen ?? manualOpen
-  const [collapsedSourceRefs, setCollapsedSourceRefs] = useState<Set<string>>(() => new Set())
-  const [sort, setSort] = useState<ArkmeSelfTopicSort>('latest')
+  const [manualOpen, setManualOpen] = useState(false)
+  const [externalRequest, setExternalRequest] = useState<SelfTopicMenuRequest>()
+  const open = tourOpen ?? (manualOpen || externalRequest !== undefined)
+  const [collapsedSourceRefs, setCollapsedSourceRefs] = useSelfTopicExpansion(userId, environment, sources)
+  const [sort, setSort] = useState<ArkmeSelfTopicSort>(() => readSelfTopicSortPreference(userId))
+  const [sortMenuOpen, setSortMenuOpen] = useState(false)
   const [draggingSourceRef, setDraggingSourceRef] = useState<string>()
   const [hoveredSourceRef, setHoveredSourceRef] = useState<string>()
   const [topicMenuSource, setTopicMenuSource] = useState<ArkmeSourceItem>()
@@ -302,10 +376,21 @@ export function ArkmeSourceBreadcrumb({
   const [dropPlan, setDropPlan] = useState<ArkmeTopicMovePlan>()
   const [movingTopic, setMovingTopic] = useState(false)
   const [moveError, setMoveError] = useState('')
-  const rootRef = useRef<HTMLElement>(null)
+  const selectorRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const menuListRef = useRef<HTMLDivElement>(null)
+  const revealSelectedTopicRef = useRef<() => void>(() => {})
+  const onOpenRef = useRef(onOpen)
+  onOpenRef.current = onOpen
+  const externalRequestRef = useRef<SelfTopicMenuRequest>()
+  externalRequestRef.current = externalRequest
+  const [externalMenuPosition, setExternalMenuPosition] = useState({ left: 12, top: 12 })
   const pendingSelectedFocusRef = useRef(false)
   const dragStartXRef = useRef(0)
+  const dragPointerRef = useRef<{ clientX: number, clientY: number }>()
+  const dragAutoScrollFrameRef = useRef<number>()
+  const dragAutoExpandTimerRef = useRef<ReturnType<typeof setTimeout>>()
+  const dragAutoExpandSourceRef = useRef<string>()
   const observedActiveDissolveRef = useRef(false)
   const topicRoots = useMemo(
     () => sortArkmeSourceTree(buildArkmeSourceTree(arkmeSelfDirectorySources(sources)), sort),
@@ -319,7 +404,7 @@ export function ArkmeSourceBreadcrumb({
     : [selectedPath[0]!, '…', selectedPath.at(-1)!]
   const label = arkmeSelfTopicSelectionLabel(selectedSource, sources)
   const selectedRef = selectedSource?.kind === 'send_to_self' || selectedSource === undefined ? undefined : selectedSource.sourceRef
-  const countsComplete = !loading && error === undefined
+  const countsComplete = countsReady ?? (!loading && error === undefined)
   const allTopicsCount = countsComplete
     ? arkmeSelfDirectorySources(sources).reduce((total, source) => total + topicDirectRecordCount(source), 0)
     : undefined
@@ -352,6 +437,13 @@ export function ArkmeSourceBreadcrumb({
     setDissolveDialogOpen(true)
   }
   useEffect(() => {
+    setSort(readSelfTopicSortPreference(userId))
+    setSortMenuOpen(false)
+  }, [userId])
+  useEffect(() => {
+    if (!open) setSortMenuOpen(false)
+  }, [open])
+  useEffect(() => {
     if (activeDissolveRunning && activeDissolve !== undefined) {
       observedActiveDissolveRef.current = true
       setTopicDissolveProgress(activeDissolve)
@@ -380,30 +472,95 @@ export function ArkmeSourceBreadcrumb({
     const currentParent = currentParentOf(draggingSource)
     return currentParent?.sourceRef !== nextParent?.sourceRef || nextSiblingOf(draggingSource, currentParent)?.sourceRef !== insertBefore?.sourceRef
   }
+  const stopTopicDragAutoScroll = () => {
+    dragPointerRef.current = undefined
+    if (dragAutoScrollFrameRef.current !== undefined) cancelAnimationFrame(dragAutoScrollFrameRef.current)
+    dragAutoScrollFrameRef.current = undefined
+  }
+  const runTopicDragAutoScroll = () => {
+    dragAutoScrollFrameRef.current = undefined
+    const list = menuListRef.current
+    const pointer = dragPointerRef.current
+    if (list === null || pointer === undefined) return
+    const delta = arkmeTopicDragAutoScrollDelta(pointer.clientX, pointer.clientY, list.getBoundingClientRect())
+    if (delta === 0) return
+    const before = list.scrollTop
+    list.scrollTop += delta
+    if (list.scrollTop === before) return
+    dragAutoScrollFrameRef.current = requestAnimationFrame(runTopicDragAutoScroll)
+  }
+  const updateTopicDragAutoScroll = (clientX: number, clientY: number) => {
+    dragPointerRef.current = { clientX, clientY }
+    if (dragAutoScrollFrameRef.current === undefined) {
+      dragAutoScrollFrameRef.current = requestAnimationFrame(runTopicDragAutoScroll)
+    }
+  }
+  const stopTopicAutoExpand = () => {
+    if (dragAutoExpandTimerRef.current !== undefined) clearTimeout(dragAutoExpandTimerRef.current)
+    dragAutoExpandTimerRef.current = undefined
+    dragAutoExpandSourceRef.current = undefined
+  }
+  const scheduleTopicAutoExpand = (row: (typeof rows)[number], plan: ArkmeTopicMovePlan | undefined) => {
+    const expandable = row.hasChildren || row.source.hasPendingChildren === true
+    if (plan?.into !== true || !expandable || row.expanded) {
+      stopTopicAutoExpand()
+      return
+    }
+    if (dragAutoExpandSourceRef.current === row.source.sourceRef) return
+    stopTopicAutoExpand()
+    dragAutoExpandSourceRef.current = row.source.sourceRef
+    dragAutoExpandTimerRef.current = setTimeout(() => {
+      setCollapsedSourceRefs(current => {
+        if (!current.has(row.source.sourceRef)) return current
+        const next = new Set(current)
+        next.delete(row.source.sourceRef)
+        return next
+      })
+      dragAutoExpandTimerRef.current = undefined
+      dragAutoExpandSourceRef.current = undefined
+    }, 500)
+  }
   const planMoveAtRow = (
     row: (typeof rows)[number], clientX: number, clientY: number, rect: DOMRect,
   ): ArkmeTopicMovePlan | undefined => {
     if (row.source.kind === 'default_category' || !arkmeSourceAllowsUserWrite(row.source)) return undefined
     if (draggingSource === undefined) return undefined
     const horizontalDelta = clientX - dragStartXRef.current
-    if (horizontalDelta >= 24) {
-      if (!canMoveTo(row.source, undefined)) return undefined
-      return { parent: row.source, insertBefore: undefined, indicatorSourceRef: row.source.sourceRef, before: false, into: true }
-    }
+    const position = arkmeTopicDropPosition(clientY, rect)
     const targetParent = currentParentOf(row.source)
     const outdenting = horizontalDelta <= -24 && targetParent !== undefined
+    if (position === 'into' && !outdenting) {
+      if (!canMoveTo(row.source, undefined)) return undefined
+      return {
+        parent: row.source, insertBefore: undefined, indicatorSourceRef: row.source.sourceRef,
+        indicatorDepth: row.depth + 1, before: false, into: true,
+      }
+    }
     const parent = outdenting ? currentParentOf(targetParent!) : targetParent
-    const before = clientY < rect.top + rect.height / 2
+    const before = position === 'before'
     // When outdenting, the row itself is not a sibling at the new depth. Anchor
     // against its parent instead, which is the target's peer at that depth.
     const anchor = outdenting ? targetParent! : row.source
     const insertBefore = before ? anchor : nextSiblingOf(anchor, parent)
     if (!canMoveTo(parent, insertBefore)) return undefined
-    return { parent, insertBefore, indicatorSourceRef: row.source.sourceRef, before, into: false }
+    return {
+      parent, insertBefore, indicatorSourceRef: row.source.sourceRef,
+      indicatorDepth: outdenting ? Math.max(0, row.depth - 1) : row.depth, before, into: false,
+    }
   }
   const finishTopicMove = (plan: ArkmeTopicMovePlan | undefined) => {
     if (plan === undefined || !canMoveTo(plan.parent, plan.insertBefore) || draggingSource === undefined || onMoveTopic === undefined) return
     const movedSource = draggingSource
+    stopTopicDragAutoScroll()
+    stopTopicAutoExpand()
+    if (plan.into && plan.parent !== undefined) {
+      setCollapsedSourceRefs(current => {
+        if (!current.has(plan.parent!.sourceRef)) return current
+        const next = new Set(current)
+        next.delete(plan.parent!.sourceRef)
+        return next
+      })
+    }
     setMovingTopic(true)
     setMoveError('')
     setDropPlan(undefined)
@@ -412,27 +569,109 @@ export function ArkmeSourceBreadcrumb({
       setMoveError(caught instanceof Error ? caught.message : '主题层级调整失败，请重试')
     }).finally(() => { setMovingTopic(false) })
   }
+
+  useEffect(() => () => {
+    stopTopicDragAutoScroll()
+    stopTopicAutoExpand()
+  }, [])
   const revealSelectedTopic = () => {
     if (selectedRef === undefined) {
       menuListRef.current?.scrollTo({ top: 0 })
       pendingSelectedFocusRef.current = false
       return
     }
-    setCollapsedSourceRefs(current => {
-      const next = new Set(current)
-      const visited = new Set<string>()
-      let ancestor = sourceByRef.get(selectedRef)
-      while (ancestor !== undefined && !visited.has(ancestor.sourceRef)) {
-        visited.add(ancestor.sourceRef)
-        const parent = currentParentOf(ancestor)
-        if (parent === undefined) break
-        next.delete(parent.sourceRef)
-        ancestor = parent
-      }
-      return next
-    })
+    // Opening a selector must not override the user's saved collapsed branches.
+    // Only reveal the selected row if it is already visible in the saved tree.
     pendingSelectedFocusRef.current = true
   }
+  revealSelectedTopicRef.current = revealSelectedTopic
+  const closeMenu = useCallback((focusExternalTrigger = false) => {
+    setManualOpen(false)
+    setSortMenuOpen(false)
+    setTopicMenuSource(undefined)
+    const request = externalRequestRef.current
+    if (request !== undefined) {
+      externalRequestRef.current = undefined
+      setExternalRequest(undefined)
+      request.onClose(focusExternalTrigger)
+    }
+  }, [])
+  const positionExternalMenu = useCallback(() => {
+    const request = externalRequestRef.current
+    const menu = menuRef.current
+    const doc = menu?.ownerDocument ?? (typeof document === 'undefined' ? undefined : document)
+    const win = doc?.defaultView
+    if (request === undefined || win === null || win === undefined) return
+    const anchor = request.anchor()
+    const width = menu?.offsetWidth ?? menuLayout.width
+    const height = Math.min(menu?.offsetHeight ?? menuLayout.maxHeight, Math.max(0, win.innerHeight - 24))
+    setExternalMenuPosition(conversationMenuPosition(anchor, width, height, { width: win.innerWidth, height: win.innerHeight }))
+  }, [])
+  useEffect(() => {
+    if (typeof document === 'undefined') return
+    const openExternal = (event: Event) => {
+      if (tourOpen !== undefined) return
+      const request = (event as CustomEvent<SelfTopicMenuRequest>).detail
+      if (request === undefined) return
+      const previous = externalRequestRef.current
+      if (previous !== undefined && previous !== request) previous.onClose(false)
+      request.accepted = true
+      onOpenRef.current?.()
+      externalRequestRef.current = request
+      setExternalRequest(request)
+      setManualOpen(false)
+      setSortMenuOpen(false)
+      setTopicMenuSource(undefined)
+      revealSelectedTopicRef.current()
+    }
+    const closeExternal = () => {
+      if (externalRequestRef.current !== undefined) closeMenu()
+    }
+    document.addEventListener(SELF_TOPIC_MENU_OPEN, openExternal)
+    document.addEventListener(SELF_TOPIC_MENU_CLOSE, closeExternal)
+    document.addEventListener(SELF_TOPIC_MENU_POSITION, positionExternalMenu)
+    return () => {
+      document.removeEventListener(SELF_TOPIC_MENU_OPEN, openExternal)
+      document.removeEventListener(SELF_TOPIC_MENU_CLOSE, closeExternal)
+      document.removeEventListener(SELF_TOPIC_MENU_POSITION, positionExternalMenu)
+      const request = externalRequestRef.current
+      if (request !== undefined) request.onClose(false)
+      externalRequestRef.current = undefined
+    }
+  }, [closeMenu, positionExternalMenu, tourOpen])
+  useLayoutEffect(() => {
+    const request = externalRequestRef.current
+    if (!open) return
+    if (request === undefined) {
+      const menu = menuRef.current
+      const anchor = menu?.parentElement
+      const win = menu?.ownerDocument.defaultView
+      if (!menu || !anchor || !win) return
+      // The inline header sits to the right of the conversation list. Limit its
+      // width to the actual remaining viewport, not the entire window width.
+      const resize = () => {
+        menu.style.setProperty('--arkme-topic-menu-available-width', `${Math.max(0, win.innerWidth - anchor.getBoundingClientRect().left - 12)}px`)
+      }
+      resize()
+      const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(resize)
+      observer?.observe(anchor)
+      win.addEventListener('resize', resize)
+      return () => {
+        observer?.disconnect()
+        win.removeEventListener('resize', resize)
+      }
+    }
+    positionExternalMenu()
+    if (!request.focusMenu) return
+    const frame = requestAnimationFrame(() => {
+      menuRef.current?.querySelector<HTMLElement>('[role="treeitem"]')?.focus({ preventScroll: true })
+    })
+    return () => { cancelAnimationFrame(frame) }
+  }, [externalRequest, open, positionExternalMenu, rows])
+  useLayoutEffect(() => {
+    if (!open || !menuRef.current || !menuListRef.current) return
+    return watchConversationMenuScrollbars(menuRef.current, menuListRef.current)
+  }, [open, externalRequest])
   const toggleTopicExpansion = (sourceRef: string) => {
     // A user-driven expand/collapse must preserve the clicked row's viewport
     // position. This also cancels a stale one-time focus request from opening.
@@ -457,16 +696,17 @@ export function ArkmeSourceBreadcrumb({
     const closeOutside = (event: PointerEvent) => {
       // The tour owns visibility, including pointer interaction with its portal.
       if (tourOpen !== undefined) return
-      if (event.target instanceof Node && !rootRef.current?.contains(event.target)) {
-        setOpen(false)
-        setTopicMenuSource(undefined)
-      }
+      if (!(event.target instanceof Node)) return
+      if (selectorRef.current?.contains(event.target) || menuRef.current?.contains(event.target)) return
+      if (sortMenuOpen && event.target instanceof Element && event.target.closest('[role="menu"]') !== null) return
+      closeMenu()
     }
     const closeEscape = (event: KeyboardEvent) => {
       if (tourOpen !== undefined) return
       if (event.key !== 'Escape') return
       if (topicMenuSource !== undefined) setTopicMenuSource(undefined)
-      else setOpen(false)
+      else if (sortMenuOpen) setSortMenuOpen(false)
+      else closeMenu(externalRequestRef.current !== undefined)
     }
     document.addEventListener('pointerdown', closeOutside, true)
     document.addEventListener('keydown', closeEscape, true)
@@ -474,7 +714,7 @@ export function ArkmeSourceBreadcrumb({
       document.removeEventListener('pointerdown', closeOutside, true)
       document.removeEventListener('keydown', closeEscape, true)
     }
-  }, [open, topicMenuSource, tourOpen])
+  }, [closeMenu, open, sortMenuOpen, topicMenuSource, tourOpen])
 
   useEffect(() => {
     if (!open || !pendingSelectedFocusRef.current) return
@@ -494,8 +734,9 @@ export function ArkmeSourceBreadcrumb({
     pendingSelectedFocusRef.current = false
   }, [open, rows, selectedRef, sort])
 
-  const selectAggregate = () => { setOpen(false); onSelectAggregate() }
-  const selectTopic = (source: ArkmeSourceItem) => { setOpen(false); onSelect(source) }
+  const acceptExternalSelection = () => { externalRequestRef.current?.onSelect() }
+  const selectAggregate = () => { acceptExternalSelection(); closeMenu(); onSelectAggregate() }
+  const selectTopic = (source: ArkmeSourceItem) => { acceptExternalSelection(); closeMenu(); onSelect(source) }
   const closeTopicDialog = () => {
     if (topicMutationSubmitting) return
     setRenameTopic(undefined)
@@ -527,22 +768,29 @@ export function ArkmeSourceBreadcrumb({
       if (selectedRef === topic.sourceRef) onSelectAggregate()
       setDissolveTopic(undefined)
       setDissolveDialogOpen(false)
-      setOpen(false)
+      closeMenu()
     }).catch(caught => {
       setTopicMutationError(caught instanceof Error ? caught.message : '主题解散失败，请重试')
     }).finally(() => { setTopicMutationSubmitting(false) })
   }
 
-  return <nav ref={rootRef} aria-label="发给自己主题" style={styles.breadcrumb}>
-    <span data-arkme-self-topic-root="true" style={styles.fixedTitle}>发给自己</span>
+  return <nav aria-label="发给自己主题" style={trigger === 'visible' ? styles.breadcrumb : {
+    ...styles.breadcrumb, position: 'absolute', width: 0, height: 0, minWidth: 0, overflow: 'visible',
+  }}>
+    <style>{CONVERSATION_SELECTOR_CSS}</style>
+    {trigger === 'visible' && <><span data-arkme-self-topic-root="true" style={styles.fixedTitle}>发给自己</span>
     <button
+      ref={selectorRef}
       type="button" aria-label="选择主题" aria-haspopup="tree" aria-expanded={open}
       data-arkme-self-topic-selector="true" title={label}
-      style={{ ...styles.selector, ...(open ? styles.selectorOpen : {}) }}
+      data-arkme-conversation-selector=""
+      style={styles.selector}
       onClick={() => {
-        if (open) { setOpen(false); return }
+        if (externalRequestRef.current !== undefined) closeMenu()
+        if (manualOpen) { closeMenu(); return }
         revealSelectedTopic()
-        setOpen(true)
+        onOpenRef.current?.()
+        setManualOpen(true)
       }}
     >
       <span style={styles.selectorText}>
@@ -553,62 +801,72 @@ export function ArkmeSourceBreadcrumb({
             : <span style={index === 0 && compactSelectedPath.length > 1 ? styles.selectorPathRoot : styles.selectorPathCurrent}>{segment}</span>}
         </Fragment>)}
       </span>
-      <svg aria-hidden viewBox="0 0 12 12" style={{ ...styles.caret, transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}>
-        <path d="m2.5 4.5 3.5 3.25 3.5-3.25" fill="none" stroke="currentColor" strokeWidth="1.25" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </button>
-    {activeDissolveRunning && activeDissolveTopic !== undefined && <button
+      <span aria-hidden><svg viewBox="0 0 16 16" width="14" height="14" fill="none">
+        <path d="m4 6 4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      </svg></span>
+    </button></>}
+    {trigger === 'visible' && activeDissolveRunning && activeDissolveTopic !== undefined && <button
       type="button" aria-label="查看解散进度" style={styles.dissolveProgressTrigger} onClick={openActiveDissolve}
     ><span aria-hidden style={styles.dissolveProgressIcon}><ArkmeTopicLoadingIcon /></span>{activeDissolveLabel}</button>}
-    {open && <div role="tree" aria-label="主题" data-arkme-self-topic-menu style={{ ...styles.menu,
-      ...(tourOpen ? { maxHeight: 'min(680px, calc(100vh - 116px), var(--arkme-self-tour-menu-max-height, 680px))' } : {}),
-    }}>
-      <div role="group" aria-label="主题排序" style={styles.sortGroup}>
-        {([
-          ['latest', '最新'],
-          ['most', '最多'],
-          ['custom', '自定义'],
-        ] as const).map(([value, label]) => <button
-          key={value} type="button" aria-pressed={sort === value}
-          style={{ ...styles.sortButton, ...(sort === value ? styles.sortButtonActive : {}) }}
-          onClick={() => {
-            setSort(value)
-            revealSelectedTopic()
-          }}
-        >{label}</button>)}
-      </div>
+    {open && <ArkmeSelfTopicMenuPortal external={externalRequest !== undefined}><div ref={menuRef} role="tree" aria-label="主题" data-arkme-self-topic-menu style={{ ...styles.menu,
+      ...(externalRequest !== undefined ? {
+        position: 'fixed', zIndex: 10020, top: externalMenuPosition.top, left: externalMenuPosition.left,
+      } : {}),
+      ...(tourOpen ? { maxHeight: `min(${menuLayout.maxHeight}px, calc(100vh - 116px), var(--arkme-self-tour-menu-max-height, ${menuLayout.maxHeight}px))` } : {}),
+    }} onPointerEnter={() => { externalRequestRef.current?.keepOpen() }}
+      onPointerLeave={() => { externalRequestRef.current?.scheduleClose() }}>
       {selectedPath.length > 0 && <div aria-label="当前主题路径" title={label} style={styles.currentPath}>当前：{label}</div>}
-      <div ref={menuListRef} style={styles.menuList}>
+      <div style={styles.menuListViewport}>
+      <div ref={menuListRef} style={styles.menuList}
+        onDragOver={event => {
+          if (!customDragEnabled || draggingSource === undefined) return
+          updateTopicDragAutoScroll(event.clientX, event.clientY)
+        }}
+        onDragLeave={event => {
+          if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return
+          stopTopicDragAutoScroll()
+          stopTopicAutoExpand()
+          setDropPlan(undefined)
+        }}
+        onDrop={() => {
+          stopTopicDragAutoScroll()
+          stopTopicAutoExpand()
+        }}
+      >
       <button type="button" role="treeitem" aria-level={1} aria-selected={selectedRef === undefined}
         style={{ ...styles.option, ...styles.aggregateOption, ...(selectedRef === undefined ? styles.optionSelected : {}) }} onClick={selectAggregate}
-      ><span aria-hidden style={styles.topicSpacer} /><span style={styles.optionLabel}>全部</span><span aria-label={`${topicCountLabel(allTopicsCount)} 条快记或消息`} style={styles.topicCount}>{topicCountLabel(allTopicsCount)}</span></button>
+      ><span aria-hidden style={styles.topicSpacer} /><span style={styles.optionLabel}>全部</span><ArkmeTopicCount count={allTopicsCount} error={error} /></button>
       {rows.map(row => {
         const isSelected = selectedRef === row.source.sourceRef
         const isHovered = hoveredSourceRef === row.source.sourceRef
         const isDefaultCategory = row.source.kind === 'default_category'
+        const canDragTopic = customDragEnabled && !isDefaultCategory && arkmeSourceAllowsUserWrite(row.source)
         const canCreateChild = arkmeSourceAllowsUserWrite(row.source) && !isDefaultCategory && onCreateChildTopic !== undefined && row.depth + 1 < ARKME_TOPIC_HIERARCHY_MAX_LEVEL
         const canManageTopic = arkmeSourceAllowsUserWrite(row.source) && !isDefaultCategory && (canCreateChild || onRenameTopic !== undefined || onDissolveTopic !== undefined)
-        const showActions = isHovered && canManageTopic
+        const showActions = isHovered && canManageTopic && draggingSource === undefined
         const manageMenuOpen = topicMenuSource?.sourceRef === row.source.sourceRef
+        const rowDropPlan = dropPlan?.indicatorSourceRef === row.source.sourceRef ? dropPlan : undefined
         const displayedCount = (row.hasChildren || row.source.hasPendingChildren === true) && !countsComplete
           ? undefined
           : aggregateTopicCounts.get(row.source.sourceRef) ?? topicDirectRecordCount(row.source)
-        return <div key={row.source.sourceRef}>
+        const depthInset = row.depth * 16
+        return <div key={row.source.sourceRef} style={{ marginTop: menuLayout.rowGap }}>
         <div
           role="treeitem" aria-level={row.depth + 1}
           aria-selected={selectedRef === row.source.sourceRef}
           {...(row.hasChildren ? { 'aria-expanded': row.expanded } : {})}
+          draggable={canDragTopic}
           data-arkme-self-topic-tree-row="true"
           data-arkme-self-topic-tree-row-ref={row.source.sourceRef}
+          data-arkme-self-topic-hit-region="true"
           style={{
-            ...styles.topicRow, paddingLeft: row.depth * 16,
+            ...styles.topicRow, marginLeft: depthInset, width: `calc(100% - ${String(depthInset)}px)`,
             ...(isHovered && !isSelected ? styles.topicRowHover : {}),
-            ...(dropPlan?.indicatorSourceRef === row.source.sourceRef ? styles.topicRowDropTarget : {}),
-            ...(dropPlan?.indicatorSourceRef === row.source.sourceRef && dropPlan.into
-              ? styles.topicRowDropInto
-              : dropPlan?.indicatorSourceRef === row.source.sourceRef && dropPlan.before ? styles.topicRowDropBefore :
-                dropPlan?.indicatorSourceRef === row.source.sourceRef ? styles.topicRowDropAfter : {}),
+            ...(isSelected ? styles.topicRowSelected : {}),
+            ...(rowDropPlan?.into === true ? styles.topicRowDropInto : {}),
+            ...(canDragTopic ? { cursor: 'grab' } : {}),
           }}
+          onClick={() => { selectTopic(row.source) }}
           onMouseEnter={() => { setHoveredSourceRef(row.source.sourceRef) }}
           onMouseLeave={() => {
             setHoveredSourceRef(current => current === row.source.sourceRef ? undefined : current)
@@ -617,38 +875,62 @@ export function ArkmeSourceBreadcrumb({
           }}
           onDragOver={event => {
             const plan = planMoveAtRow(row, event.clientX, event.clientY, event.currentTarget.getBoundingClientRect())
-            if (plan === undefined) return
+            if (plan === undefined) {
+              setDropPlan(undefined)
+              stopTopicAutoExpand()
+              return
+            }
             event.preventDefault()
             event.dataTransfer.dropEffect = 'move'
             setDropPlan(plan)
+            scheduleTopicAutoExpand(row, plan)
+          }}
+          onDragStart={event => {
+            event.dataTransfer.effectAllowed = 'move'
+            event.dataTransfer.setData('text/plain', row.source.sourceRef)
+            dragStartXRef.current = event.clientX
+            stopTopicDragAutoScroll()
+            stopTopicAutoExpand()
+            setMoveError('')
+            setDropPlan(undefined)
+            setDraggingSourceRef(row.source.sourceRef)
+          }}
+          onDragEnd={() => {
+            stopTopicDragAutoScroll()
+            stopTopicAutoExpand()
+            setDraggingSourceRef(undefined)
+            setDropPlan(undefined)
           }}
           onDrop={event => {
             event.preventDefault()
             finishTopicMove(planMoveAtRow(row, event.clientX, event.clientY, event.currentTarget.getBoundingClientRect()))
           }}
         >
+          {Array.from({ length: row.depth }, (_, guideDepth) => <span
+            key={`guide-${String(guideDepth)}`}
+            aria-hidden
+            data-arkme-self-topic-hierarchy-guide={guideDepth}
+            style={{ ...styles.topicHierarchyGuide, left: (guideDepth - row.depth) * 16 + 12 }}
+          />)}
+          {rowDropPlan !== undefined && !rowDropPlan.into && <span
+            aria-hidden data-arkme-self-topic-drop-line={rowDropPlan.before ? 'before' : 'after'}
+            style={{
+              ...styles.topicDropLine,
+              left: (rowDropPlan.indicatorDepth - row.depth) * 16 + 4,
+              ...(rowDropPlan.before ? { top: -1 } : { bottom: -1 }),
+            }}
+          />}
+          {rowDropPlan?.into === true && <span aria-hidden data-arkme-self-topic-drop-into="true" style={styles.topicDropIntoBadge}>移入</span>}
           {row.hasChildren ? <button
             type="button" aria-label={`${row.expanded ? '收起' : '展开'}${row.source.displayName}`}
             title={row.expanded ? '收起子主题' : '展开子主题'} style={styles.topicToggle}
-            onClick={() => { toggleTopicExpansion(row.source.sourceRef) }}
+            onClick={event => { event.stopPropagation(); toggleTopicExpansion(row.source.sourceRef) }}
           ><svg aria-hidden viewBox="0 0 12 12" width="12" height="12" style={{ transform: row.expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .16s ease' }}>
             <path d="m4 2.5 3.5 3.5L4 9.5" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
           </svg></button> : <span aria-hidden style={styles.topicSpacer}>{isDefaultCategory ? '' : '·'}</span>}
-          <button type="button" draggable={customDragEnabled && !isDefaultCategory && arkmeSourceAllowsUserWrite(row.source)}
-            style={{ ...styles.topicSelect, ...(isSelected ? styles.topicSelectSelected : {}) }}
-            onDragStart={event => {
-              event.dataTransfer.effectAllowed = 'move'
-              event.dataTransfer.setData('text/plain', row.source.sourceRef)
-              dragStartXRef.current = event.clientX
-              setMoveError('')
-              setDraggingSourceRef(row.source.sourceRef)
-            }}
-            onDragEnd={() => { setDraggingSourceRef(undefined); setDropPlan(undefined) }}
-            onClick={() => { selectTopic(row.source) }}
-          ><span style={styles.topicName}>{row.source.displayName}</span><span
-            aria-label={`${topicCountLabel(displayedCount)} 条快记或消息`}
-            style={{ ...styles.topicCount, ...(showActions ? styles.topicCountHidden : {}) }}
-          >{topicCountLabel(displayedCount)}</span></button>
+          <button type="button" style={styles.topicSelect}
+            onClick={event => { event.stopPropagation(); selectTopic(row.source) }}
+          ><span style={styles.topicName}>{row.source.displayName}</span><ArkmeTopicCount count={displayedCount} error={error} hidden={showActions} /></button>
           {isHovered && canManageTopic && <button
             type="button" style={styles.topicMore} title="主题操作" aria-label={`${row.source.displayName}主题操作`}
             aria-haspopup="menu" aria-expanded={manageMenuOpen}
@@ -706,11 +988,12 @@ export function ArkmeSourceBreadcrumb({
           if (!canMoveTo(undefined, undefined)) return
           event.preventDefault()
           event.dataTransfer.dropEffect = 'move'
-          setDropPlan({ parent: undefined, insertBefore: undefined, indicatorSourceRef: 'root', before: false, into: false })
+          stopTopicAutoExpand()
+          setDropPlan({ parent: undefined, insertBefore: undefined, indicatorSourceRef: 'root', indicatorDepth: 0, before: false, into: false })
         }}
         onDrop={event => {
           event.preventDefault()
-          finishTopicMove({ parent: undefined, insertBefore: undefined, indicatorSourceRef: 'root', before: false, into: false })
+          finishTopicMove({ parent: undefined, insertBefore: undefined, indicatorSourceRef: 'root', indicatorDepth: 0, before: false, into: false })
         }}
       >拖到这里，变为一级主题</div>}
       {moveError !== '' && <div role="alert" style={styles.loadingRow}>{moveError}</div>}
@@ -720,13 +1003,47 @@ export function ArkmeSourceBreadcrumb({
         {onRetry !== undefined && <button type="button" style={styles.retry} onClick={onRetry}>重试</button>}
       </div>}
       </div>
-      {onCreateTopic !== undefined && <div style={styles.createFooter}>
-        <button type="button" aria-label="创建主题" style={styles.createButton} onClick={() => {
-          setOpen(false)
+      <div aria-hidden="true" data-arkme-self-topic-fade style={styles.menuListFade} />
+      </div>
+      <div data-arkme-self-topic-footer="true" style={styles.createFooter}>
+        {onCreateTopic !== undefined && <Button type="button" variant="outline" size="md" aria-label="新主题"
+          className="arkme-self-topic-create-button" icon={<IconNewChatOutline16 size={14} />} onClick={() => {
+          acceptExternalSelection()
+          closeMenu()
           onCreateTopic()
-        }}><span aria-hidden style={{ fontSize: 16, lineHeight: 1 }}>＋</span>创建主题</button>
-      </div>}
-    </div>}
+        }}>新主题</Button>}
+        <ArkmeDshViewOptionsMenu
+          open={sortMenuOpen}
+          items={([
+            { type: 'label', id: 'sort-label', text: '排序方式' },
+            { id: 'latest', label: <span className="arkme-self-topic-sort-option" aria-label="最新">
+              <span className="arkme-self-topic-sort-option-title">最新</span>
+              <span className="arkme-self-topic-sort-option-description">有最新内容的主题靠前</span>
+            </span> },
+            { id: 'most', label: <span className="arkme-self-topic-sort-option" aria-label="最多">
+              <span className="arkme-self-topic-sort-option-title">最多</span>
+              <span className="arkme-self-topic-sort-option-description">最多内容的主题靠前</span>
+            </span> },
+            { id: 'custom', label: <span className="arkme-self-topic-sort-option" aria-label="自定义">
+              <span className="arkme-self-topic-sort-option-title">自定义</span>
+              <span className="arkme-self-topic-sort-option-description">可按住主题拖动排序</span>
+            </span> },
+          ] satisfies MenuEntry[])}
+          selectedIds={[sort]}
+          onOpen={() => { setSortMenuOpen(true) }}
+          onClose={() => { setSortMenuOpen(false) }}
+          onSelect={id => {
+            if (id !== 'latest' && id !== 'most' && id !== 'custom') return
+            setSort(id)
+            writeSelfTopicSortPreference(userId, id)
+            setSortMenuOpen(false)
+            revealSelectedTopic()
+          }}
+          ariaLabel={`主题排序方式：${sort === 'latest' ? '最新' : sort === 'most' ? '最多' : '自定义'}`}
+          dataArkmeSelfTopicSortTrigger="true"
+        />
+      </div>
+    </div></ArkmeSelfTopicMenuPortal>}
     {renameTopic !== undefined && <ArkmeTopicRenameDialog
       topic={renameTopic} submitting={topicMutationSubmitting} error={topicMutationError}
       onCancel={closeTopicDialog} onConfirm={submitTopicRename}

@@ -16,7 +16,7 @@ import {
 } from './recording-import-contract.js'
 import { recordingImportFileNameKey } from './recording-import-shared.js'
 import { securePrivateDirectory, securePrivateFile } from './private-filesystem.js'
-import { ArkmeRecordReeditDraftConflict, parseArkmeRecordReeditAttachments } from './record-reedit-contract.js'
+import { ArkmeRecordReeditDraftConflict, parseArkmeRecordReeditMentions, parseArkmeRecordReeditAttachments } from './record-reedit-contract.js'
 import type { ArkmeRecordReeditSubmission } from './record-reedit-contract.js'
 
 interface PersistedState {
@@ -150,8 +150,10 @@ function normalizedRecordReeditDraft(value: unknown): ArkmeRecordReeditDraft | u
     || !Number.isSafeInteger(source.draftRevision) || (source.draftRevision as number) <= 0
     || !Number.isSafeInteger(source.baseVersion) || (source.baseVersion as number) <= 0
     || !/^[a-f0-9]{64}$/.test(fingerprint)) return undefined
+  let mentions: ArkmeRecordReeditDraft['mentions']
   let attachments: ArkmeRecordReeditDraft['attachments']
   try {
+    if (source.mentions !== undefined) mentions = parseArkmeRecordReeditMentions(source.mentions)
     if (source.attachments !== undefined) attachments = parseArkmeRecordReeditAttachments(source.attachments)
   } catch { return undefined }
   return {
@@ -168,6 +170,7 @@ function normalizedRecordReeditDraft(value: unknown): ArkmeRecordReeditDraft | u
     ...(typeof source.relationUid === 'string' ? { relationUid: source.relationUid } : {}),
     title: source.title.slice(0, 100),
     textContent: source.textContent.slice(0, 40000),
+    ...(mentions === undefined ? {} : { mentions }),
     ...(attachments === undefined ? {} : { attachments }),
     baseVersion: source.baseVersion as number,
     baseContentFingerprint: fingerprint,
@@ -189,6 +192,7 @@ function sameRecordReeditCandidate(left: Omit<ArkmeRecordReeditDraft, 'draftRevi
   return left.baseVersion === right.baseVersion
     && left.baseContentFingerprint === right.baseContentFingerprint && left.title === right.title
     && left.textContent === right.textContent
+    && JSON.stringify(left.mentions) === JSON.stringify(right.mentions)
     && JSON.stringify(left.attachments) === JSON.stringify(right.attachments)
 }
 

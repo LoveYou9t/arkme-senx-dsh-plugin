@@ -1,3 +1,4 @@
+import { adaptSessionPersistence } from '../src/dsh-remote/session-persistence.js'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -124,7 +125,7 @@ async function fixture(input: {
     ...(input.yieldToEventLoop === undefined ? {} : { yieldToEventLoop: input.yieldToEventLoop }),
     now: input.now ?? (() => 2_000),
   })
-  return { host, realtime, controlCalls, adapter, sessionOwnership }
+  return { host, realtime, controlCalls, controlPlane, adapter, sessionOwnership }
 }
 
 function historyEvent(type: string, seq: number): DshRemoteHistoryEntry['event'] {
@@ -466,6 +467,52 @@ describe('Host login-only registration lifecycle', () => {
     await host.stop()
   })
 
+  it('pushes canonical session metadata over Realtime without waiting for Backend, and coalesces changes during sync', async () => {
+    const { host, realtime, adapter, controlPlane, controlCalls } = await fixture()
+    await host.start()
+    const internal = host as unknown as {
+      backgroundProjectionFlight?: Promise<void>
+      publishProjectionEvent(event: unknown): Promise<void>
+      flushPendingSessionEventBatches(): Promise<void>
+    }
+    await internal.backgroundProjectionFlight
+    const original = adapter.sessions.bind(adapter)
+    let title = 'First title'
+    let seq = 1
+    vi.spyOn(adapter, 'sessions').mockImplementation(async input => {
+      const page = await original(input)
+      return { ...page, items: page.items.map(item => ({ ...item, title, projectionAsOfSeq: seq })) }
+    })
+    let release!: () => void
+    const blocked = new Promise<void>(resolve => { release = resolve })
+    const sync = vi.spyOn(controlPlane, 'syncWorkspaces').mockImplementationOnce(async () => { await blocked; return {} })
+    controlCalls.splice(0)
+    const emit = async (type: string) => {
+      await internal.publishProjectionEvent({ kind: 'session-event', sessionId: 'session-01', entry: { event: historyEvent(type, seq++) } })
+      await internal.flushPendingSessionEventBatches()
+    }
+    try {
+      await emit('turn/start')
+      const metadata = () => realtime.published.filter(p => p.operation === 'snapshot.get' && (p.body as Record<string, unknown>).sessions)
+      expect(metadata().at(-1)?.body).toMatchObject({ sessions: [{ sessionId: 'session-01', title: 'First title', blank: false }] })
+      await vi.waitFor(() => { expect(sync).toHaveBeenCalledOnce() })
+      expect(controlCalls.some(call => call.name === 'complete')).toBe(false)
+      title = 'Final title'
+      await emit('session/title')
+      expect(metadata().at(-1)?.body).toMatchObject({ sessions: [{ title: 'Final title' }] })
+      for (let i = 0; i < 20; i++) await emit('assistant/chunk')
+      expect(metadata()).toHaveLength(2)
+      expect(sync).toHaveBeenCalledOnce()
+      release()
+      await vi.waitFor(() => { expect(sync).toHaveBeenCalledTimes(2) })
+      await internal.backgroundProjectionFlight
+      expect(controlCalls.filter(call => call.name === 'sessions').at(-1)?.value).toMatchObject({ items: [{ title: 'Final title' }] })
+    } finally {
+      release()
+      await host.stop()
+    }
+  })
+
   it('does not repeat a complete Backend projection inside the 30 second metadata interval', async () => {
     let now = 2_000
     const { host, controlCalls } = await fixture({ now: () => now })
@@ -614,9 +661,9 @@ describe('Host login-only registration lifecycle', () => {
     await host.stop()
   })
 
-  it('requeues only Backend-known cold sessions and checkpoints the stable DSH revision', async () => {
+  it.each(['legacy', 'handles'])('requeues only Backend-known cold sessions and checkpoints the stable DSH revision (%s)', async api => {
     const outbox = historyOutbox()
-    const readFrom = vi.fn(async (sessionRef: string) => ({
+    const readFrom = vi.fn(async (sessionRef: string, _offset: number, _signal: AbortSignal) => ({
       meta: { id: sessionRef },
       events: [
         historyEvent('session/start', 0),
@@ -624,6 +671,20 @@ describe('Host login-only registration lifecycle', () => {
         historyEvent('turn/start', 4), historyEvent('turn/end', 5),
       ],
     }))
+    const snapshots = [
+      { header: { id: 'session-01' }, revision: 'revision-1' },
+      { header: { id: 'session-from-another-account' }, revision: 'revision-x' },
+    ]
+    const close = vi.fn(async () => {})
+    const persistence = api === 'legacy' ? { listSnapshots: async () => snapshots, readFrom } : {
+      list: async () => snapshots,
+      open: async (id: string) => ({
+        header: { id },
+        read: async (offset: number, _length: unknown, options: { signal: AbortSignal }) =>
+          readFrom(id, offset, options.signal),
+        close,
+      }),
+    }
     const knownHistorySessions = vi.fn(async () => ({ session_refs: ['session-01'] }))
     const { host } = await fixture({
       turnUploadForAccount: () => outbox as unknown as DshRemoteTurnUploadOutbox,
@@ -632,13 +693,7 @@ describe('Host login-only registration lifecycle', () => {
         backfill_mode: 'local_persistence_v1', content_encoding: 'gzip', max_object_bytes: 1024,
       }),
       knownHistorySessions,
-      sessionPersistence: {
-        listSnapshots: async () => [
-          { header: { id: 'session-01' }, revision: 'revision-1' },
-          { header: { id: 'session-from-another-account' }, revision: 'revision-x' },
-        ],
-        readFrom,
-      },
+      sessionPersistence: adaptSessionPersistence(persistence)!,
       yieldToEventLoop: async () => undefined,
     })
     await host.start()
@@ -663,6 +718,7 @@ describe('Host login-only registration lifecycle', () => {
     await expect(internal.backfillOneHistorySession('42', internal.runtime, new AbortController().signal))
       .resolves.toBe(false)
     expect(readFrom).toHaveBeenCalledOnce()
+    if (api === 'handles') expect(close).toHaveBeenCalledOnce()
     await host.stop()
   })
 

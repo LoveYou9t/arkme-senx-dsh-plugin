@@ -1,3 +1,4 @@
+import { parseArkmeRecordReeditMentions } from './record-reedit-contract.js'
 import { recordOwnerId } from './record-owner-id.js'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { readDirectoryPage } from './directory-reader.js'
@@ -871,6 +872,7 @@ export interface ArkmeHostApiOptions {
   extensionInstallTasks?: () => ArkmeExtensionInstallTasks | undefined
   ownedExtensionInventory?: () => ArkmeOwnedExtensionInventory | undefined
   remoteHost?: () => DshRemoteHostFacade | undefined
+  remoteUnavailableReason?: () => string
   desktopQuarantine?: Pick<ArkmeDesktopExtensionQuarantine, 'status' | 'dismiss' | 'reenable' | 'health'>
   openApiMcpController?: Pick<ManagedOpenApiMcpController, 'status' | 'retry'>
   teamService?: TeamServicePort
@@ -931,6 +933,7 @@ export function createArkmeHostApi(service: ArkmeService, options: ArkmeHostApiO
         options.desktopQuarantine,
         options.openApiMcpController,
         options.teamService,
+        options.remoteUnavailableReason,
       )
       writeJson(res, 200, { ok: true, value })
     } catch (error) {
@@ -976,6 +979,7 @@ export async function dispatchArkmeHostOperation(
   desktopQuarantine?: Pick<ArkmeDesktopExtensionQuarantine, 'status' | 'dismiss' | 'reenable' | 'health'>,
   openApiMcpController?: Pick<ManagedOpenApiMcpController, 'status' | 'retry'>,
   teamService?: TeamServicePort,
+  remoteUnavailableReason?: () => string,
 ): Promise<unknown> {
   switch (operation) {
     case 'provider.capabilities': {
@@ -1095,9 +1099,9 @@ export async function dispatchArkmeHostOperation(
       })),
       requestSignal,
     )
-    case 'remote.currentSession': return await requireRemoteHost(remoteHost).currentSession()
+    case 'remote.currentSession': return await requireRemoteHost(remoteHost, remoteUnavailableReason).currentSession()
     case 'remote.reportCurrentSession': {
-      const host = requireRemoteHost(remoteHost)
+      const host = requireRemoteHost(remoteHost, remoteUnavailableReason)
       host.reportCurrentSession({
         accountId: stringParam(params, 'accountId'),
         windowRef: stringParam(params, 'windowRef'),
@@ -1106,8 +1110,8 @@ export async function dispatchArkmeHostOperation(
       })
       return { accepted: true }
     }
-    case 'remote.getStatus': return requireRemoteHost(remoteHost).getStatus()
-    case 'remote.renameDesktop': return await requireRemoteHost(remoteHost).renameDesktop(stringParam(params, 'displayName'))
+    case 'remote.getStatus': return requireRemoteHost(remoteHost, remoteUnavailableReason).getStatus()
+    case 'remote.renameDesktop': return await requireRemoteHost(remoteHost, remoteUnavailableReason).renameDesktop(stringParam(params, 'displayName'))
     case 'billing.quota': return await service.billingQuota()
     case 'billing.products': return await service.billingProducts()
     case 'billing.order.create': return await service.createBillingOrder({
@@ -1334,7 +1338,9 @@ export async function dispatchArkmeHostOperation(
       scope: recordingSpeakerScopeParam(params),
     }, requestSignal)
     case 'calendar.buckets': return await service.calendarBuckets({
+      ...(params?.background === true ? { background: true } : {}),
       startDate: stringParam(params, 'startDate'),
+      ...(params?.sourceRef === undefined ? {} : { sourceRef: stringParam(params, 'sourceRef') }),
       ...(requestSignal === undefined ? {} : { signal: requestSignal }),
       endDate: stringParam(params, 'endDate'),
       ...(stringParam(params, 'timezone') === '' ? {} : { timezone: stringParam(params, 'timezone') }),
@@ -1343,6 +1349,7 @@ export async function dispatchArkmeHostOperation(
       const cursor = cursorParam(params)
       return await service.calendarRecords({
         bucketDate: stringParam(params, 'bucketDate'),
+        ...(params?.sourceRef === undefined ? {} : { sourceRef: stringParam(params, 'sourceRef') }),
         ...(requestSignal === undefined ? {} : { signal: requestSignal }),
         limit: numberParam(params, 'limit', 20),
         ...(stringParam(params, 'timezone') === '' ? {} : { timezone: stringParam(params, 'timezone') }),
@@ -1434,7 +1441,11 @@ export async function dispatchArkmeHostOperation(
     }
     case 'records.summary': return await service.summary()
     case 'records.list': return await service.list(numberParam(params, 'limit', 30), cursorParam(params))
-    case 'records.tags.list': return await service.listRecordTags(numberParam(params, 'limit', 100), requestSignal)
+    case 'records.tags.list': return await service.listRecordTags({
+      limit: numberParam(params, 'limit', 100),
+      ...(typeof params?.query === 'string' ? { query: params.query } : {}),
+      ...(typeof params?.cursor === 'string' ? { cursor: params.cursor } : {}),
+    }, requestSignal)
     case 'records.tags.query': {
       const cursorSendAt = numberParam(params, 'cursorSendAt', 0)
       const cursorRecordUid = stringParam(params, 'cursorRecordUid').trim()
@@ -1713,6 +1724,9 @@ export async function dispatchArkmeHostOperation(
       requiredRelatedQuickNoteParam(params, 'sourceRef'),
       requiredRelatedQuickNoteParam(params, 'momentRef'),
       requestSignal,
+    )
+    case 'source.record-edit-history': return await service.recordEditHistoryPage(
+      stringParam(params, 'sourceRef'), stringParam(params, 'messageActionRef'), numberParam(params, 'cursorEditAt', 0), requestSignal,
     )
     case 'source.related-quick-note.detail': return await service.relatedQuickNoteDetail(
       requiredRelatedQuickNoteParam(params, 'sourceRef'),
@@ -2039,7 +2053,8 @@ export async function dispatchArkmeHostOperation(
     )
     case 'files.capabilities': return service.fileCapabilities()
     case 'files.local.list': return await service.fileList()
-    case 'files.local.open': return await service.fileOpenLocal(stringParam(params, 'fileRef'))
+    case 'files.local.open-folder': return await service.fileOpenLocalFolder(stringParam(params, 'fileRef'), requestSignal)
+    case 'files.local.open': return await service.fileOpenLocal(stringParam(params, 'fileRef'), requestSignal)
     case 'files.local.remove': await service.fileRemove(stringParam(params, 'fileRef')); return { removed: true }
     case 'files.search': return await service.fileSearch({ query: stringParam(params, 'query'), limit: numberParam(params, 'limit', 30), cursor: stringParam(params, 'cursor') })
     case 'files.send.tasks': return await service.fileSendTasks(stringParam(params, 'sourceRef') || undefined)
@@ -2144,6 +2159,7 @@ export async function dispatchArkmeHostOperation(
         sourceRef: stringParam(params, 'sourceRef'),
         itemUid: stringParam(params, 'itemUid'),
         ...(params.newText === undefined ? {} : { newText: stringParam(params, 'newText') }),
+        ...(params.mentions === undefined ? {} : { mentions: parseArkmeRecordReeditMentions(params.mentions) }),
         ...(params.newTitle === undefined ? {} : { newTitle: stringParam(params, 'newTitle') }),
         ...(params.attachments === undefined ? {} : { attachments: parseArkmeRecordReeditAttachments(params.attachments) }),
         ...(params.expectedDraftRevision === undefined ? {} : { expectedDraftRevision: numberParam(params, 'expectedDraftRevision', -1) }),
@@ -2165,6 +2181,7 @@ export async function dispatchArkmeHostOperation(
         sourceRef: stringParam(params, 'sourceRef'),
         itemUid: stringParam(params, 'itemUid'),
         ...(params.newText === undefined ? {} : { newText: stringParam(params, 'newText') }),
+        ...(params.mentions === undefined ? {} : { mentions: parseArkmeRecordReeditMentions(params.mentions) }),
         ...(params.newTitle === undefined ? {} : { newTitle: stringParam(params, 'newTitle') }),
         ...(params.attachments === undefined ? {} : { attachments: parseArkmeRecordReeditAttachments(params.attachments) }),
         ...(params.expectedDraftRevision === undefined ? {} : { expectedDraftRevision: numberParam(params, 'expectedDraftRevision', -1) }),
@@ -2408,7 +2425,7 @@ export async function dispatchArkmeHostOperation(
     case 'extensions.persistent.invoke': {
       const extensionId = stringParam(params, 'extensionId')
       const version = stringParam(params, 'version')
-      const state = requireExtensionManager(extensionManager).persistentClientState(extensionId, version)
+      const state = await requireExtensionManager(extensionManager).persistentClientState(extensionId, version)
       if (!state.mount) {
         throw new ArkmePluginError('extension-runtime-unavailable', '插件不可用，请重启 DSH 后重试', false, 409)
       }
@@ -2454,8 +2471,8 @@ function requireUpdateManager(
   return updateManager
 }
 
-function requireRemoteHost(host: DshRemoteHostFacade | undefined): DshRemoteHostFacade {
-  if (host === undefined) throw new ArkmePluginError('CAPABILITY_UNSUPPORTED', '当前 DSH 未加载远控 Host', false, 503)
+function requireRemoteHost(host: DshRemoteHostFacade | undefined, reason?: () => string): DshRemoteHostFacade {
+  if (host === undefined) throw new ArkmePluginError('CAPABILITY_UNSUPPORTED', reason?.() ?? '当前 DSH 未加载远控 Host', false, 503)
   return host
 }
 

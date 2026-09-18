@@ -216,6 +216,8 @@ export type ArkmeTeamJoinResult =
 
 export interface ArkmeDirectoryContactProfile {
   contactRef: string
+  /** Public World/catalog identity, matching the marketplace author navigation target. */
+  worldUserId?: number
   displayName: string
   nickname: string
   remark: string
@@ -374,6 +376,7 @@ export interface ArkmeRecordCursor {
 }
 
 export interface ArkmeSelfRecordItem {
+  hasManualEdit?: boolean | undefined
   /** Frozen long-recording selection returned by the Record owner. */
   forwardRecords?: ArkmeForwardRecordsPreview
   recordUid: string
@@ -409,7 +412,8 @@ export interface ArkmeSelfSummary {
   totalSec: number
 }
 
-export type ArkmeCalendarScopeKind = 'self'
+// 'self' is the account-wide calendar (including chat and DSH inputs).
+export type ArkmeCalendarScopeKind = 'self' | 'send_to_self' | 'topic' | 'uncategorized'
 
 export interface ArkmeCalendarBucketDay {
   bucketDate: string
@@ -492,6 +496,8 @@ export interface ArkmeRecordTagItem {
 
 export interface ArkmeRecordTagList {
   items: ArkmeRecordTagItem[]
+  hasMore?: boolean
+  nextCursor?: string
 }
 
 export interface ArkmeCreateTextResult {
@@ -989,7 +995,16 @@ export interface ArkmeImageSearchResult {
   queryGuard: ArkmeSearchQueryGuard
 }
 
+export interface ArkmeDshInputOrigin {
+  sessionId: string
+  eventSeq: number
+}
+
 export interface ArkmeSearchRecordItem {
+  /** DSH input identity resolved from local public session events; never persisted by record sync. */
+  dshOrigin?: ArkmeDshInputOrigin
+  /** Local lookup could not inspect every session; never proof of absence. */
+  dshOriginUnverified?: true
   recordUid: string
   /** Record owner required by Chat's exact timeline locator; never the current viewer. */
   recordOwnerUserId?: RecordOwnerId
@@ -1189,6 +1204,7 @@ export interface ArkmeProviderCapabilities {
     topicHomeVisibility?: true
     /** Paged five-section directory, including coverage and Host-owned recovery. */
     groupSelfNickname?: true
+    remoteRecordSearch?: true
     contactDirectoryReads?: true
     sourceTimeline: true
     /** Forward snapshots include typed transcripts and account-bound attachment references. */
@@ -1548,7 +1564,7 @@ export interface ArkmeTimelineCursor {
   afterSequence?: number
 }
 
-/** A browser-safe topic projection attached to an item in the aggregate self feed. */
+/** A browser-safe topic projection attached to an item in a personal aggregate or topic-subtree feed. */
 export interface ArkmeTimelineSelfTopic {
   /** Browser-safe stable key for resolving the current topic from the self topic tree. */
   topicHierarchyKey: string
@@ -1617,6 +1633,8 @@ export interface ArkmeTimelineMentionTarget {
 }
 
 export interface ArkmeTimelineItem {
+  /** Record owner manual-edit fact; independent of AI polish and content version. */
+  hasManualEdit?: boolean | undefined
   /** Display-only call status; room, participant and call identifiers stay host-side. */
   callRecord?: {
     mediaType: 'audio' | 'video'
@@ -1681,7 +1699,7 @@ export interface ArkmeTimelineItem {
   contentBlocks?: ArkmeContentBlock[]
   /** Record owner reported media refs, but their delivery projection was temporarily unavailable. */
   mediaUnavailable?: boolean
-  /** Present only for a categorized record in the aggregate “发给自己” feed. */
+  /** Present for a categorized record in the aggregate or a topic-subtree “发给自己” feed. */
   selfTopic?: ArkmeTimelineSelfTopic
   /** Browser-safe Chat forward or Record-owned long-recording selection snapshot. */
   forwardRecords?: ArkmeForwardRecordsPreview
@@ -1822,6 +1840,7 @@ export interface ArkmeForwardTranscriptSegment {
 }
 
 export interface ArkmeForwardRecordPreviewItem {
+  templateKind?: number
   displayKind?: number
   senderName: string
   /** Opaque Provider image reference for the snapshotted sender. */
@@ -2098,6 +2117,7 @@ export interface ArkmeRecordReeditDraft {
   itemUid: string
   title: string
   textContent: string
+  mentions?: import('./record-reedit-contract.js').ArkmeRecordReeditMention[]
   attachments?: import('./record-reedit-contract.js').ArkmeRecordReeditAttachmentSelection[]
   baseVersion: number
   baseContentFingerprint: string
@@ -3093,6 +3113,8 @@ export interface ArkmeAiVideoListResult {
 
 export interface ArkmeFileAssetDisplayItem {
   fileAssetUid: string
+  fileKind?: number
+  size?: number
   fileName?: string
   mimeType?: string
   previewUrl?: string
@@ -3348,6 +3370,8 @@ export type ArkmeChatClientEvent = {
   type: 'projection-invalidated'
   revision: number
   projection: 'record' | 'chat.direct_message_admission'
+  /** Confirmed content-only writes may retain visible topic counts while revalidating. */
+  retainTopicCounts?: boolean
 } | {
   type: 'message-notification'
   revision: number
@@ -3455,6 +3479,7 @@ export type ArkmePluginOperation =
   | 'records.cache'
   | 'records.refresh'
   | 'records.search'
+  | 'search.records'
   | 'records.list'
   | 'records.tags.list'
   | 'records.tags.query'
@@ -3574,6 +3599,7 @@ export type ArkmePluginOperation =
   | 'files.send.reconcile'
   | 'files.local.list'
   | 'files.local.open'
+  | 'files.local.open-folder'
   | 'files.local.remove'
   | 'files.send'
   | 'files.send.tasks'
@@ -3684,7 +3710,6 @@ export type ArkmeHostOperation = ArkmePluginOperation
   | 'recordings.speaker.cached-options'
   | 'recordings.speaker.recommendation'
   | 'recordings.speaker.assign-item'
-  | 'search.records'
   | 'search.scene'
   | 'search.recordings'
   | 'search.history'
@@ -3719,6 +3744,7 @@ export type ArkmeHostOperation = ArkmePluginOperation
   | 'source.related-quick-notes.from-message'
   | 'source.related-quick-notes.from-moment'
   | 'source.related-quick-note.detail'
+  | 'source.record-edit-history'
   | 'extensions.catalog.list'
   | 'extensions.classification.tree'
   | 'extensions.classification.items'

@@ -1924,6 +1924,7 @@ export class ArkmeSdk {
     return this.call('files.search', params, signal)
   }
   async localFiles(signal?: AbortSignal): Promise<ArkmeLocalFile[]> { return this.call('files.local.list', undefined, signal) }
+  async openLocalFileFolder(fileRef: string, signal?: AbortSignal): Promise<{ folderOpened: true }> { return this.call('files.local.open-folder', { fileRef }, signal) }
   async openLocalFile(fileRef: string, signal?: AbortSignal): Promise<import('../file-transfer-contract.js').ArkmeFileOpenResult> { return this.call('files.local.open', { fileRef }, signal) }
   async removeLocalFile(fileRef: string): Promise<void> { return this.call('files.local.remove', { fileRef }) }
   async sendFiles(input: ArkmeFileSendInput): Promise<ArkmeFileSendTask> { return this.call('files.send', { ...input.content, ...input }) }
@@ -2032,6 +2033,13 @@ export class ArkmeSdk {
     }, options.signal)
   }
 
+  /** Search current-account server records, including retained DSH navigation identity. */
+  async searchRemote(query: string, options: { limit?: number; cursor?: string; signal?: AbortSignal } = {}): Promise<ArkmeRecordSearchResult> {
+    const { signal, ...params } = options
+    if ((await this.capabilities(signal)).features.remoteRecordSearch !== true) throw new Error('当前 Provider 不支持远端快记搜索')
+    return await this.call<ArkmeRecordSearchResult>('search.records', { query, ...params }, signal)
+  }
+
   async search(query: string, options: ArkmeSearchOptions & { signal?: AbortSignal } = {}): Promise<ArkmeCachedQueryResult> {
     return await this.call<ArkmeCachedQueryResult>('records.search', {
       query,
@@ -2059,9 +2067,11 @@ export class ArkmeSdk {
     }, options.signal)
   }
 
-  async tags(options: { limit?: number; signal?: AbortSignal } = {}): Promise<ArkmeRecordTagList> {
+  async tags(options: { limit?: number; query?: string; cursor?: string; signal?: AbortSignal } = {}): Promise<ArkmeRecordTagList> {
     return await this.call<ArkmeRecordTagList>('records.tags.list', {
       limit: options.limit ?? 100,
+      ...(options.query === undefined ? {} : { query: options.query }),
+      ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
     }, options.signal)
   }
 
@@ -2192,3 +2202,5 @@ export async function callArkme<T>(
   return await defaultSdk.call<T>(operation, params, signal)
 }
 export type { ArkmeDirectoryPage, ArkmeDirectorySectionKind, ArkmeDirectoryItem } from '../types.js'
+
+export type { ArkmeDshInputOrigin } from '../types.js'

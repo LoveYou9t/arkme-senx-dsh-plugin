@@ -37,7 +37,7 @@ import { arkmeMediaKind } from '../file-transfer-contract.js'
 import { projectArkmeChatAttention, projectArkmeChatAttentionFromMuted } from '../chat-attention.js'
 import { retainNewerArkmeChatPolicy } from '../chat-policy-projection.js'
 import { arkmeEmojiTokenSafePrefix, arkmeHasKnownEmojiToken } from '../arkme-emoji-text.js'
-import { arkmeSourceAllowsUserWrite, arkmeTopicDisplayName } from '../topic-policy.js'
+import { ARKME_DSH_INPUT_TOPIC_KIND, arkmeSourceAllowsUserWrite, arkmeTopicDisplayName } from '../topic-policy.js'
 
 export interface ArkmeSourceRefPayload {
   version: 1
@@ -75,6 +75,11 @@ export interface ArkmePrivateChatViewerLabel {
 }
 
 interface CacheEntry<T> { value: T; expiresAtMillis: number }
+interface SelfDirectoryContext {
+  hierarchyData: Record<string, unknown> | undefined
+  summaryResult: PromiseSettledResult<ArkmeSelfSummary>
+  latestRecordsResult: PromiseSettledResult<Record<string, unknown>>
+}
 
 export interface ArkmeSourceRecordReader {
   summary(): Promise<ArkmeSelfSummary>
@@ -372,6 +377,8 @@ export class SourceService {
   private readonly chatSourceCache = new Map<string, ArkmeSourceItem>()
   private readonly sourceListCache = new Map<string, CacheEntry<ArkmeSourceList>>()
   private readonly sourceListInFlight = new SharedReadGroup<ArkmeSourceList>()
+  private readonly selfDirectoryContexts = new Map<number, CacheEntry<SelfDirectoryContext>>()
+  private readonly selfDirectoryContextReads = new SharedReadGroup<SelfDirectoryContext>()
   private readonly groupAvatarSnapshotCache = new Map<string, CacheEntry<ArkmeGroupAvatarSnapshotProjection | null>>()
   private readonly topicDissolveProgress = new Map<string, {
     userId: number
@@ -705,6 +712,8 @@ export class SourceService {
     this.chatSourceCache.clear()
     this.sourceListCache.clear()
     this.sourceListInFlight.clear()
+    this.selfDirectoryContexts.clear()
+    this.selfDirectoryContextReads.clear()
     this.groupAvatarSnapshotCache.clear()
     this.topicDissolveProgress.clear()
   }
@@ -1161,7 +1170,7 @@ export class SourceService {
     if (movedTopicUid !== topic.ownerRef || movedParentUid !== (nextParentUid ?? '') || siblingOrder <= 0) {
       throw new ArkmePluginError('topic-hierarchy-move-contract-invalid', '主题移动响应不完整，请刷新后重试', true, 502)
     }
-    this.sourceListCache.clear()
+    this.invalidateSourceListCache(session.userId, 'send_to_self')
     return {
       sourceRef,
       ...(nextParentSourceRef === undefined ? {} : { parentSourceRef: nextParentSourceRef }),
@@ -1221,6 +1230,10 @@ export class SourceService {
     const maxLimit = directory === 'send_to_self' ? 100 : 50
     const limit = Math.min(maxLimit, Math.max(1, Math.trunc(options.limit ?? 30)))
     const cursor = options.cursor?.trim() ?? ''
+    if (directory === 'send_to_self' && options.refresh === true && cursor === '') {
+      this.selfDirectoryContexts.delete(session.userId)
+      this.selfDirectoryContextReads.invalidate(key => key === String(session.userId))
+    }
     const cacheKey = `${String(session.userId)}:${directory}:${String(limit)}:${cursor}:${options.firstPaint === true ? "first" : "full"}`
     this.pruneSourceListCache()
     const cached = this.sourceListCache.get(cacheKey)
@@ -1245,6 +1258,71 @@ export class SourceService {
     const target = await this.selfTargetForAccount(userId)
     signal?.throwIfAborted()
     return target
+  }
+
+  /**
+   * Resolve one personal topic and every visible descendant from the same
+   * paginated directory contract used by the topic picker. Keeping this owner
+   * here prevents a timeline read from trusting a partial browser-side tree or
+   * exposing raw topic ids across the Host boundary.
+   */
+  async topicSubtreeSources(sourceRef: string, signal?: AbortSignal): Promise<ArkmeSourceItem[]> {
+    signal?.throwIfAborted()
+    const session = await this.runtime.requireSession()
+    const selected = await this.openSourceRef(sourceRef, session.userId)
+    if (selected.kind !== 'topic') {
+      throw new ArkmePluginError('topic-subtree-source-invalid', '仅主题支持读取下级主题内容', false, 400)
+    }
+    const selectedKey = await this.topicHierarchyKey(session.userId, selected.ownerRef)
+    const byHierarchyKey = new Map<string, ArkmeSourceItem>()
+    let cursor: string | undefined
+    const visitedCursors = new Set<string>()
+    for (let pageIndex = 0; pageIndex < 100; pageIndex += 1) {
+      signal?.throwIfAborted()
+      const page = await this.listSources('send_to_self', {
+        limit: 100,
+        ...(cursor === undefined ? {} : { cursor }),
+        ...(signal === undefined ? {} : { signal }),
+      })
+      for (const item of page.items) {
+        if (item.kind !== 'topic' || item.topicHierarchyKey === undefined) continue
+        byHierarchyKey.set(item.topicHierarchyKey, item)
+      }
+      if (!page.hasMore || page.nextCursor === undefined) break
+      if (visitedCursors.has(page.nextCursor)) {
+        throw new ArkmePluginError('topic-subtree-cursor-invalid', '主题层级分页未推进，请重试', true, 502)
+      }
+      visitedCursors.add(page.nextCursor)
+      cursor = page.nextCursor
+      if (pageIndex === 99) {
+        throw new ArkmePluginError('topic-subtree-pagination-limit', '主题层级加载未完成，请重试', true, 502)
+      }
+    }
+    const selectedSource = byHierarchyKey.get(selectedKey) ?? {
+      ...await this.sourceItem(selected),
+      topicHierarchyKey: selectedKey,
+    }
+    byHierarchyKey.set(selectedKey, selectedSource)
+    const childrenByParent = new Map<string, ArkmeSourceItem[]>()
+    for (const item of byHierarchyKey.values()) {
+      const parentKey = item.parentTopicHierarchyKey
+      if (parentKey === undefined || parentKey === item.topicHierarchyKey) continue
+      const children = childrenByParent.get(parentKey) ?? []
+      children.push(item)
+      childrenByParent.set(parentKey, children)
+    }
+    const result: ArkmeSourceItem[] = []
+    const queue = [selectedSource]
+    const visited = new Set<string>()
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      const key = current.topicHierarchyKey ?? current.sourceRef
+      if (visited.has(key)) continue
+      visited.add(key)
+      result.push(current)
+      queue.push(...(childrenByParent.get(key) ?? []))
+    }
+    return result
   }
 
   private async selfTargetForAccount(userId: number): Promise<ArkmeSourceItem> {
@@ -1344,6 +1422,25 @@ export class SourceService {
     throw new ArkmePluginError('directory-groups-pagination-limit', '群聊列表超过安全分页上限', false, 502)
   }
 
+  private async selfDirectoryContext(session: ArkmeSessionCredentials, signal?: AbortSignal): Promise<SelfDirectoryContext> {
+    const cached = this.selfDirectoryContexts.get(session.userId)
+    if (cached && cached.expiresAtMillis > Date.now()) return cached.value
+    return this.selfDirectoryContextReads.run(String(session.userId), async (inner, isCurrent) => {
+      const [hierarchyData, [summaryResult, latestRecordsResult]] = await Promise.all([
+        this.runtime.authenticatedPost<Record<string, unknown>>('/api/v1/topics/hierarchy/relations/list', {}, session, inner).catch(() => undefined),
+        Promise.allSettled([
+          this.recordReader.summary(),
+          this.runtime.authenticatedPost<Record<string, unknown>>('/api/v1/records/uncategorized/query', { limit: 10 }, session, inner),
+        ]),
+      ])
+      const value = { hierarchyData, summaryResult, latestRecordsResult }
+      if (isCurrent()) {
+        this.selfDirectoryContexts.set(session.userId, { value, expiresAtMillis: Date.now() + SOURCE_LIST_CACHE_TTL_MS })
+      }
+      return value
+    }, signal)
+  }
+
   private async listSourcesUncached(
     session: ArkmeSessionCredentials,
     directory: ArkmeSourceDirectory,
@@ -1356,7 +1453,7 @@ export class SourceService {
       const topicPage = options.cursor === undefined || options.cursor.trim() === ''
         ? undefined
         : this.decodeTopicDirectoryCursor(options.cursor)
-      const [data, hierarchyData] = await Promise.all([
+      const [data, { hierarchyData, summaryResult, latestRecordsResult }] = await Promise.all([
         this.runtime.authenticatedPost<Record<string, unknown>>(
           '/api/v1/topics/display/list',
           {
@@ -1370,22 +1467,7 @@ export class SourceService {
           session,
           options.signal,
         ),
-        this.runtime.authenticatedPost<Record<string, unknown>>(
-          '/api/v1/topics/hierarchy/relations/list',
-          {},
-          session,
-          options.signal,
-        ).catch(() => undefined),
-      ])
-      options.signal?.throwIfAborted()
-      const [summaryResult, latestRecordsResult] = await Promise.allSettled([
-        this.recordReader.summary(),
-        this.runtime.authenticatedPost<Record<string, unknown>>(
-          '/api/v1/records/uncategorized/query',
-          { limit: 10 },
-          session,
-          options.signal,
-        ),
+        this.selfDirectoryContext(session, options.signal),
       ])
       options.signal?.throwIfAborted()
       const cached = summaryResult.status === 'rejected' || latestRecordsResult.status === 'rejected'
@@ -1452,6 +1534,9 @@ export class SourceService {
         const item = objectValue(raw)
         if (arkmePrivacyLockedTopic(item)) continue
         const core = objectValue(item.topic_core)
+        // Archives remain readable through calendar/search, but are not
+        // personal topics and must not contribute to this directory's preview/counts.
+        if (numberValue(core.kind) === ARKME_DSH_INPUT_TOPIC_KIND) continue
         const status = core.status ?? item.status
         // A dissolved topic remains in some list responses briefly (or in an
         // older cache), but it must never be selectable by the plugin.
@@ -1706,6 +1791,10 @@ export class SourceService {
   }
 
   invalidateSourceListCache(userId: number, directory?: ArkmeSourceDirectory): void {
+    if (directory === undefined || directory === 'send_to_self') {
+      this.selfDirectoryContexts.delete(userId)
+      this.selfDirectoryContextReads.invalidate(key => key === String(userId))
+    }
     if (directory === undefined || directory === 'root') {
       this.runtime.invalidateKey(this.runtime.requestScope(userId), 'directory:root:')
     }
@@ -2036,6 +2125,7 @@ export class SourceService {
         },
       ),
       ...(sourceKey === undefined ? {} : { sourceKey }),
+      ...(source.kind === 'topic' ? { topicHierarchyKey: await this.topicHierarchyKey(source.userId, source.ownerRef) } : {}),
       kind: source.kind,
       displayName: source.displayName,
       activeAtMillis: source.conversationListActivityAtMillis ?? 0,

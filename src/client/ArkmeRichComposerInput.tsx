@@ -49,6 +49,8 @@ export interface ArkmeComposerCaretGeometry {
 }
 
 export interface ArkmeRichComposerInputProps {
+  /** Format of source text in the plain editor; independent of rich Markdown editing. */
+  textFormat?: 'plain' | 'markdown'
   markdownEnabled?: boolean
   markdown?: ArkmeMarkdownDraft | undefined
   onMarkdownChange?(value: ArkmeMarkdownDraft, text: string, mentions: readonly ArkmeComposerMention[], emojis: readonly ArkmeComposerEmoji[]): void
@@ -229,9 +231,10 @@ function renderEditorContents(
   mentions: readonly ArkmeComposerMention[],
   emojis: readonly ArkmeComposerEmoji[],
   activeHashTagStart?: number,
+  textFormat: 'plain' | 'markdown' = 'plain',
 ): void {
   const fragment = document.createDocumentFragment()
-  for (const run of arkmeComposerTextRuns(value, mentions, emojis, activeHashTagStart)) {
+  for (const run of arkmeComposerTextRuns(value, mentions, emojis, activeHashTagStart, textFormat)) {
     if (run.kind === 'emoji' && run.emoji !== undefined) {
       const atom = document.createElement('span')
       atom.contentEditable = 'false'
@@ -263,7 +266,7 @@ function renderEditorContents(
 /** Native contenteditable surface whose rich emoji spans remain atomic, selectable inline objects. */
 const ArkmePlainComposerInput = forwardRef<ArkmeRichComposerHandle, ArkmeRichComposerInputProps>(
   function ArkmeRichComposerInput({
-    className, value, mentions, emojis, maxLength, placeholder, ariaLabel, disabled, style,
+    className, value, mentions, emojis, textFormat = 'plain', maxLength, placeholder, ariaLabel, disabled, style,
     onTextChange, onInputActivity, onSelectionChange, onFocus, onBlur, onPaste, onKeyDown,
   }, forwardedRef) {
     const editorRef = useRef<HTMLDivElement>(null)
@@ -319,18 +322,18 @@ const ArkmePlainComposerInput = forwardRef<ArkmeRichComposerHandle, ArkmeRichCom
       const nextSelection = pendingSelectionRef.current
         ?? (active ? editorSelection(root, selectionRef.current) : selectionRef.current)
       const activeHashTagStart = arkmeHashTagTrigger(value, nextSelection.start, nextSelection.end)?.startIndex
-      renderEditorContents(root, value, mentions, emojis, activeHashTagStart)
+      renderEditorContents(root, value, mentions, emojis, activeHashTagStart, textFormat)
       setEditorHasContent(value !== '')
       pendingSelectionRef.current = undefined
       selectionRef.current = nextSelection
       if (active) applySelection(nextSelection.start, nextSelection.end)
-    }, [value, mentions, emojis])
+    }, [value, mentions, emojis, textFormat])
 
     const commitDom = (root: HTMLDivElement, nextText = editorSemanticText(root)) => {
       const selection = editorSelection(root, selectionRef.current)
       if (nextText.length > maxLength) {
         const activeHashTagStart = arkmeHashTagTrigger(valueRef.current, selectionRef.current.start, selectionRef.current.end)?.startIndex
-        renderEditorContents(root, valueRef.current, mentions, emojis, activeHashTagStart)
+        renderEditorContents(root, valueRef.current, mentions, emojis, activeHashTagStart, textFormat)
         setEditorHasContent(valueRef.current !== '')
         applySelection(selectionRef.current.start, selectionRef.current.end)
         return

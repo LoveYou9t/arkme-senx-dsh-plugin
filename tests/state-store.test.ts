@@ -28,7 +28,7 @@ describe('ArkmeStateStore', () => {
     expect(JSON.parse(await readFile(path, 'utf8')).recordReeditSubmissionsByUser['42']['identity\u0000r1'].state).toBe('committing')
   })
 
-  it.each(['metadata', 'content', 'recreated'] as const)('cleans only the submitted candidate after a %s draft update', async change => {
+  it.each(['metadata', 'content', 'mentions', 'recreated'] as const)('cleans only the submitted candidate after a %s draft update', async change => {
     const store = new ArkmeStateStore(await mkdtemp(join(tmpdir(), 'arkme-reedit-candidate-identity-')))
     const job = await reeditJob(store)
     await store.putRecordReeditSubmission(42, job)
@@ -36,6 +36,7 @@ describe('ArkmeStateStore', () => {
     const next = await store.putRecordReeditDraft(42, {
       ...job.draft, updatedAtMillis: 2, lastSourceRef: 'refreshed-source',
       ...(change === 'content' ? { textContent: '新的候选' } : {}),
+      ...(change === 'mentions' ? { mentions: [] } : {}),
     }, change === 'recreated' ? 0 : job.draft.draftRevision)
     expect(next.draftRevision === job.draft.draftRevision).toBe(change === 'metadata')
     await store.putRecordReeditSubmission(42, { ...job, state: 'committed', result: {

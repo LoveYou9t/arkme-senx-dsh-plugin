@@ -212,8 +212,9 @@ const styles: Record<string, CSSProperties> = {
   sectionLabel: { margin: '0 0 11px 2px', color: arkmeTheme.tertiary, fontSize: 12, lineHeight: '17px', fontWeight: 650 },
   contacts: { height: 56, margin: '0 0 13px', display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', gap: 8 },
   contact: {
-    minWidth: 0, height: 56, display: 'grid', justifyItems: 'center', alignContent: 'start', gap: 4,
-    padding: 0, border: 0, background: 'transparent', color: arkmeTheme.secondary, cursor: 'pointer', font: 'inherit',
+    minWidth: 0, width: '100%', maxWidth: 64, height: 56, justifySelf: 'center', boxSizing: 'border-box',
+    display: 'grid', justifyItems: 'center', alignContent: 'center', gap: 4,
+    padding: '4px 6px', border: 0, borderRadius: 12, background: 'transparent', color: arkmeTheme.secondary, cursor: 'pointer', font: 'inherit',
   },
   contactName: { maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 10, lineHeight: '14px' },
   search: {
@@ -551,6 +552,10 @@ export function ArkmeCallSurface({ initialPickerOpen = false }: ArkmeCallSurface
   const [page, setPage] = useState<ArkmeCallHistoryPage>()
   const [historyState, setHistoryState] = useState<'loading' | 'ready' | 'error'>('loading')
   const [historyError, setHistoryError] = useState('')
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [loadMoreError, setLoadMoreError] = useState('')
+  const paginationAbortRef = useRef<AbortController>()
+  const listRef = useRef<HTMLUListElement>(null)
   const [selectedRef, setSelectedRef] = useState('')
   const [detail, setDetail] = useState<ArkmeCallDetail>()
   const [detailState, setDetailState] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
@@ -569,11 +574,17 @@ export function ArkmeCallSurface({ initialPickerOpen = false }: ArkmeCallSurface
   const [officialAuthorProfile, setOfficialAuthorProfile] = useState<ArkmeOfficialAuthorProfile>()
   const searchRef = useRef<HTMLInputElement>(null)
   const historyGenerationRef = useRef(0)
+  const historyRefreshingRef = useRef(false)
   const historyAbortRef = useRef<AbortController>()
   const historyRefreshTimerRef = useRef<ReturnType<typeof setTimeout>>()
   const detailGenerationRef = useRef(0)
   const refreshHistory = useCallback((options: { silent?: boolean } = {}) => {
+    historyRefreshingRef.current = true
     historyAbortRef.current?.abort()
+    paginationAbortRef.current?.abort()
+    paginationAbortRef.current = undefined
+    setLoadingMore(false)
+    setLoadMoreError('')
     const controller = new AbortController()
     historyAbortRef.current = controller
     const generation = historyGenerationRef.current + 1
@@ -584,6 +595,7 @@ export function ArkmeCallSurface({ initialPickerOpen = false }: ArkmeCallSurface
       .then(async value => {
         await preloadHistoryAvatars(value)
         if (controller.signal.aborted || historyGenerationRef.current !== generation) return
+        historyRefreshingRef.current = false
         setPage(value)
         setHistoryState('ready')
       })
@@ -592,12 +604,59 @@ export function ArkmeCallSurface({ initialPickerOpen = false }: ArkmeCallSurface
         setHistoryError(readableError(error))
         setHistoryState('error')
       })
+      .finally(() => {
+        if (historyGenerationRef.current === generation) historyRefreshingRef.current = false
+      })
   }, [])
+
+  const loadMoreHistory = useCallback(async () => {
+    if (historyState !== 'ready' || historyRefreshingRef.current || historyAbortRef.current?.signal.aborted
+      || paginationAbortRef.current || !page?.hasMore || !page.nextCursor) return
+    const controller = new AbortController()
+    paginationAbortRef.current = controller
+    const generation = historyGenerationRef.current
+    setLoadingMore(true)
+    setLoadMoreError('')
+    try {
+      const value = await callArkme<ArkmeCallHistoryPage>('calls.history.list', {
+        limit: 30, cursor: page.nextCursor, includeRecentContacts: false,
+      }, controller.signal)
+      if (value.hasMore && (!value.nextCursor?.trim() || value.nextCursor === page.nextCursor)) {
+        throw new Error('通话记录分页游标无效，请重试')
+      }
+      await preloadHistoryAvatars(value)
+      if (controller.signal.aborted || historyGenerationRef.current !== generation) return
+      setPage(previous => previous === undefined ? value : {
+        ...previous,
+        items: Array.from(new Map([...previous.items, ...value.items]
+          .map(item => [item.stableId || item.callRef, item])).values()),
+        hasMore: value.hasMore,
+        nextCursor: value.nextCursor ?? '',
+      })
+    } catch (error) {
+      if (!controller.signal.aborted && historyGenerationRef.current === generation) {
+        setLoadMoreError(readableError(error))
+      }
+    } finally {
+      if (paginationAbortRef.current === controller) {
+        paginationAbortRef.current = undefined
+        setLoadingMore(false)
+      }
+    }
+  }, [page, historyState])
+
+  // Fill a short/filtered list without requiring a scroll event first.
+  useEffect(() => {
+    const list = listRef.current
+    if (list && !loadingMore && !loadMoreError
+      && list.scrollHeight <= list.clientHeight) void loadMoreHistory()
+  }, [loadMoreHistory, loadingMore, loadMoreError, query])
 
   useEffect(() => {
     refreshHistory()
     return () => {
       historyAbortRef.current?.abort()
+      paginationAbortRef.current?.abort()
       if (historyRefreshTimerRef.current !== undefined) clearTimeout(historyRefreshTimerRef.current)
     }
   }, [refreshHistory])
@@ -680,7 +739,7 @@ export function ArkmeCallSurface({ initialPickerOpen = false }: ArkmeCallSurface
   }, [pickerOpen, pickerQuery])
 
   const realItems = page?.items ?? []
-  const sampleItems = historyState === 'ready' ? SAMPLE_CALLS : []
+  const sampleItems = historyState === 'ready' && page?.hasMore === false ? SAMPLE_CALLS : []
   const selectableItems = historyState === 'ready' ? [...realItems, ...sampleItems] : realItems
   const recentContacts = page?.recentContacts ?? []
   const usingSampleContacts = historyState === 'ready' && recentContacts.length === 0
@@ -936,6 +995,7 @@ export function ArkmeCallSurface({ initialPickerOpen = false }: ArkmeCallSurface
       <button
         type="button"
         aria-pressed={selected}
+        data-arkme-hover="button"
         style={{ ...styles.callRow, ...(selected ? styles.callRowSelected : {}) }}
         onClick={() => {
           if (tour.current === 2 && item.callRef === 'sample-video') tour.change(3)
@@ -981,6 +1041,8 @@ export function ArkmeCallSurface({ initialPickerOpen = false }: ArkmeCallSurface
         {contacts.slice(0, 5).map(contact => <button
           key={`${String(contact.userId)}:${contact.displayName}`}
           type="button"
+          className="arkme-call-recent-contact"
+          data-arkme-hover="none"
           style={usingSampleContacts ? { ...styles.contact, cursor: 'default' } : styles.contact}
           aria-label={usingSampleContacts ? `${contact.displayName}示例联系人` : `选择${contact.displayName}通话方式`}
           aria-disabled={usingSampleContacts || undefined}
@@ -1005,8 +1067,26 @@ export function ArkmeCallSurface({ initialPickerOpen = false }: ArkmeCallSurface
         <p style={styles.sectionLabel}>最近通话</p>
         {historyState === 'loading' ? <div style={styles.status}>正在读取通话记录...</div>
           : historyState === 'error' ? <div style={styles.status}>{historyError || '通话记录暂时不可用'}</div>
-            : callRows.length === 0 ? <div style={styles.status}>{query.trim() === '' ? '还没有通话记录' : '没有符合条件的通话'}</div>
-              : <ul style={styles.list}>{callRows.map(row => renderCallRow(row.item, row.sample))}</ul>}
+            : <ul ref={listRef} aria-label="通话记录列表" style={styles.list} onScroll={event => {
+              const list = event.currentTarget
+              if (!loadMoreError && list.scrollHeight - list.scrollTop - list.clientHeight <= 200) {
+                void loadMoreHistory()
+              }
+            }}>
+              {callRows.map(row => renderCallRow(row.item, row.sample))}
+              {callRows.length === 0 && <li style={styles.status}>{query.trim() === '' ? '还没有通话记录' : '没有符合条件的通话'}</li>}
+              {loadingMore && <li role="status" style={styles.status}>
+                <svg width="14" height="14" viewBox="0 0 20 20" aria-hidden="true" style={{ verticalAlign: 'middle', marginRight: 6 }}>
+                  <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="35 16">
+                    <animateTransform attributeName="transform" type="rotate" from="0 10 10" to="360 10 10" dur="0.8s" repeatCount="indefinite" />
+                  </circle>
+                </svg>加载更多…
+              </li>}
+              {!loadingMore && loadMoreError && <li style={styles.status}>
+                <button type="button" onClick={() => { void loadMoreHistory() }} style={{ color: 'inherit', background: 'none', border: 0, cursor: 'pointer' }}>加载失败，点击重试</button>
+              </li>}
+              {!loadingMore && !loadMoreError && page?.hasMore === false && realItems.length > 0 && <li style={styles.status}>没有更多了</li>}
+            </ul>}
       </section>
     </aside>
     <main style={styles.content}>

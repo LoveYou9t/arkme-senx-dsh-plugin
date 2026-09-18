@@ -483,7 +483,9 @@ export function ArkmePersistentSidebar({
         setContactAddSession(current => current === contactAddSession ? undefined : current)
       }}
     />}
-    {directoryVisible && !contactsMode && sidebarResizeHandle}
+    {directoryVisible && (contactsMode
+      ? <div aria-hidden style={{ flex: '0 0 3px', width: 3 }} />
+      : sidebarResizeHandle)}
   </aside>
 }
 
@@ -527,6 +529,7 @@ export function ArkmePersistentWorkspace({
       visible={harnessVisible}
       nativeSettings={webLockedHarness}
       accountId={authenticatedUserId}
+      accountScope={contactsAccountKey}
       followSession={ui.mode === 'harness'}
     />
     {!webLockedHarness && <div

@@ -1,3 +1,4 @@
+import { compareTimelineMessages } from './timeline-message-order.js'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { useResizableNoteDetail } from './use-resizable-note-detail.js'
 import { ARKME_CONVERSATION_HEADER_HEIGHT } from './arkme-layout.js'
@@ -44,8 +45,9 @@ export function mergeConversationRows(
       occurredAtMillis: item.occurredAtMillis, item,
     })),
   ]
-  return rows.sort((left, right) => left.occurredAtMillis - right.occurredAtMillis
-    || left.id.localeCompare(right.id))
+  return rows.sort((left, right) => left.kind === 'message' && right.kind === 'message'
+    ? compareTimelineMessages(left.item, right.item)
+    : left.occurredAtMillis - right.occurredAtMillis || left.id.localeCompare(right.id))
 }
 
 /** Match the desktop prelude policy while preserving each card's identity. */
@@ -188,7 +190,7 @@ const styles: Record<string, CSSProperties> = {
 
 function OpaqueAvatar({ avatarRef, size = 18 }: { avatarRef?: string; size?: number }) {
   const src = useArkmeAvatarImage(avatarRef) ?? ''
-  return <span style={{ ...styles.avatar, width: size, height: size, minWidth: size }} aria-hidden>
+  return <span data-arkme-avatar style={{ ...styles.avatar, width: size, height: size, minWidth: size }} aria-hidden>
     {src === '' ? <ArkmeMark size={size} /> : <img src={src} alt="" draggable={false} style={styles.avatarImage} />}
   </span>
 }

@@ -1,3 +1,7 @@
+import { stringValue } from './services/service.js'
+import { RecordEditHistoryService } from './services/record-edit-history-service.js'
+import type { ArkmeRecordEditHistoryPage } from './record-edit-history.js'
+import { arkmeRecordTextFormat } from './markdown.js'
 import type { RecordOwnerId } from './record-owner-id.js'
 import { RecordDeletionService } from './services/record-deletion-service.js'
 import { RecordTopicAssignmentService } from './services/record-topic-assignment-service.js'
@@ -329,6 +333,7 @@ export class ArkmeService {
   private readonly linkMetadata: ArkmeLinkMetadataService
   private readonly aiPolish: GroupAiPolishService
   private readonly chat: ChatService
+  private readonly recordEditHistory: RecordEditHistoryService
   private readonly relatedQuickNote: RelatedQuickNoteService
   private readonly contact: ContactService
   private readonly contactDirectory: ContactDirectoryService
@@ -349,6 +354,7 @@ export class ArkmeService {
     outgoingCallBroker = new ArkmeOutgoingCallBroker(),
     billingGateway?: ArkmeBillingGateway,
     linkDocumentReader?: ArkmeLinkDocumentReader,
+    localDshQuery?: () => unknown,
   ) {
     this.accountScope = createArkmeAccountSessionOwner(sessionStore, fetchImpl)
     this.runtime = new ServiceRuntime(config, sessionStore, stateStore, fetchImpl, pendingSessionStore, this.accountScope)
@@ -360,6 +366,8 @@ export class ArkmeService {
     this.profile = new ProfileService(this.runtime)
     this.callHistory = new CallHistoryService(this.runtime, this.profile, {
       forwardContentBlocks: (files, viewerUserId) => this.media.forwardContentBlocks(files, viewerUserId),
+    }, {
+      privateRemarksByUserIds: (userIds, options) => this.source.privateRemarksByUserIds(userIds, options),
     })
     this.extensionReview = new ExtensionReviewService(this.runtime, this.profile, {
       createTextForConversation: async (recordUid, textContent) => {
@@ -385,9 +393,13 @@ export class ArkmeService {
       readLocal: async ref => ({ file: (await this.filesOwner().readLocal(ref)).file }),
       uploadRefs: async refs => await this.filesOwner().uploadRefs(refs),
       withReferences: async (refs, userId, persist) => await this.filesOwner().withReferences(refs, userId, persist),
-    }, async () => { await this.realtime.invalidateRecordProjection() })
+    }, async () => { await this.realtime.invalidateRecordProjection() },
+    async (source, text, humans, bots, session, textFormat) => await this.chat.resolveMentions(
+      source, text, text, humans, bots, session, undefined, textFormat,
+    ))
     this.calendar = new CalendarService(this.runtime, this.privacy, this.media, this.record, this.source)
     this.search = new SearchService(this.runtime, this.record, this.media, this.source, this.privacy)
+    if (localDshQuery !== undefined) this.search.localDshQuery = localDshQuery
     this.bot = new BotService(this.runtime, this.source)
     this.messageActions = new MessageActionService(
       new ArkmeMessageActionGateway(
@@ -465,6 +477,19 @@ export class ArkmeService {
       async () => { await this.realtime.invalidateRecordProjection() },
       this.messageActions,
     )
+    this.recordEditHistory = new RecordEditHistoryService(this.runtime, {
+      projectPage: async (snapshots, target, signal) => {
+        const session = await this.runtime.requireSession()
+        if (session.userId !== target.viewerUserId) throw new ArkmePluginError('record-edit-history-invalid', '编辑记录暂不可用，请刷新后重试', true, 403)
+        const displayPages = await this.media.hydrateRecordSnapshotMediaPage(snapshots, session, target.kind === 'chat' ? target : undefined, signal)
+        return snapshots.map((snapshot, index) => {
+          const contentBlocks = this.media.richContentBlocks(snapshot, session.userId, displayPages[index])
+          return { title: stringValue(snapshot.title), textContent: stringValue(snapshot.text_content),
+            textFormat: arkmeRecordTextFormat(snapshot), contentBlocks,
+            ...(this.media.recordMediaUnavailable(snapshot, contentBlocks) ? { mediaUnavailable: true } : {}) }
+        })
+      },
+    })
     this.relatedQuickNote = new RelatedQuickNoteService(this.runtime, this.record, this.media, this.profile, this.privacy)
     this.contactDirectory = new ContactDirectoryService(
       this.runtime, this.source, this.bot, this.profile, this.world, this.chat,
@@ -521,7 +546,8 @@ export class ArkmeService {
   async fileList() { return await this.filesOwner().files() }
   async fileReadLocal(ref: string) { return await this.filesOwner().readLocal(ref) }
   attachLocalFileOpener(openPath: (path: string, signal: AbortSignal) => Promise<void>) { this.localFileOpener = openPath }
-  async fileOpenLocal(ref: string) { return await this.filesOwner().openLocal(ref) }
+  async fileOpenLocal(ref: string, signal?: AbortSignal) { return await this.filesOwner().openLocal(ref, signal) }
+  async fileOpenLocalFolder(ref: string, signal?: AbortSignal) { return await this.filesOwner().openLocalFolder(ref, signal) }
   async fileRemove(ref: string) { await this.filesOwner().remove(ref) }
   async fileSend(input: ArkmeFileSendInput) {
     if (input.content.textFormat === 'markdown' && this.config.markdownQuickNotesEnabled !== true) throw new ArkmePluginError('markdown-send-disabled', 'Markdown 发送尚未开放，请稍后重试', false, 403)
@@ -539,6 +565,7 @@ export class ArkmeService {
   }
 
   private clearAccountState(userIds: readonly number[]): void {
+    this.calendar.dispose()
     this.directory.reset()
     this.realtime.resetAttentionSummary()
     for (const userId of userIds) this.privacy.clear(userId)
@@ -759,6 +786,7 @@ export class ArkmeService {
         localFirstDirectory: true,
         topicHomeVisibility: true,
         groupSelfNickname: true,
+        remoteRecordSearch: true,
         contactDirectoryReads: true,
         sourceTimeline: true,
         forwardContent: true,
@@ -1197,6 +1225,10 @@ export class ArkmeService {
 
   /** @internal Built-in loopback UI only; excluded from the published Provider declaration. */
   async interwovenMomentDetail(sourceRef: string, momentRef: string, signal?: AbortSignal): Promise<ArkmeInterwovenDetail> { return await this.interwoven.interwovenMomentDetail(sourceRef, momentRef, signal) }
+
+  async recordEditHistoryPage(sourceRef: string, messageActionRef: string, cursorEditAt = 0, signal?: AbortSignal): Promise<ArkmeRecordEditHistoryPage> {
+    return await this.recordEditHistory.page(await this.chat.recordEditHistoryTarget(sourceRef, messageActionRef), cursorEditAt, signal)
+  }
 
   async relatedQuickNotesFromMessage(sourceRef: string, messageActionRef: string, signal?: AbortSignal): Promise<ArkmeRelatedQuickNoteList> { return await this.relatedQuickNote.list(await this.chat.relatedQuickNoteLocator(sourceRef, messageActionRef), signal) }
   async relatedQuickNotesFromMoment(sourceRef: string, momentRef: string, signal?: AbortSignal): Promise<ArkmeRelatedQuickNoteList> { return await this.relatedQuickNote.list(await this.interwoven.relatedQuickNoteLocator(sourceRef, momentRef, signal), signal) }
@@ -1913,7 +1945,7 @@ export class ArkmeService {
   }
 
   async calendarBuckets(
-    options: { startDate: string; endDate: string; timezone?: string; signal?: AbortSignal },
+    options: { startDate: string; endDate: string; timezone?: string; sourceRef?: string; background?: boolean; signal?: AbortSignal },
   ): Promise<ArkmeCalendarBucketPage> {
     return await this.calendar.bucketPage(options)
   }
@@ -1921,6 +1953,7 @@ export class ArkmeService {
   async calendarRecords(
     options: {
       bucketDate: string
+      sourceRef?: string
       timezone?: string
       limit?: number
       cursor?: ArkmeRecordCursor
@@ -2123,11 +2156,11 @@ export class ArkmeService {
 
   async createText(recordUid: string, textContent: string): Promise<ArkmeCreateTextResult> {
     const result = await this.record.createText(recordUid, textContent)
-    await this.realtime.invalidateRecordProjection(); return result
+    await this.realtime.invalidateRecordProjection({ contentOnly: true }); return result
   }
 
-  async listRecordTags(limit = 100, signal?: AbortSignal): Promise<ArkmeRecordTagList> {
-    return await this.record.listTags(limit, signal)
+  async listRecordTags(options: number | { limit?: number; query?: string; cursor?: string } = 100, signal?: AbortSignal): Promise<ArkmeRecordTagList> {
+    return await this.record.listTags(options, signal)
   }
 
   async createTextForConversation(
@@ -2135,7 +2168,7 @@ export class ArkmeService {
     textContent: string,
   ): Promise<ArkmeConversationWriteResult> {
     const result = await this.record.createTextForConversation(recordUid, textContent)
-    if (result.localState !== 'failed') await this.realtime.invalidateRecordProjection(); return result
+    if (result.localState !== 'failed') await this.realtime.invalidateRecordProjection({ contentOnly: true }); return result
   }
 
   async createDSHAgentInputText(recordUid: string, textContent: string, sendAtMillis: number): Promise<ArkmeCreateTextResult> {

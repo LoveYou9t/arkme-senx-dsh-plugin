@@ -1,5 +1,6 @@
 import { arkmeConversationMembers } from '../src/client/conversation-members-store.js'
 import { emojiSample } from './fixtures/emoji.js'
+import { Profiler } from 'react'
 import { act, create, type ReactTestInstance, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { arkmeMessagePreparing } from '../src/client/message-preparing-store.js'
@@ -44,6 +45,7 @@ import { ArkmeRichComposerInput } from '../src/client/ArkmeRichComposerInput.js'
 import { ArkmeEmojiPicker } from '../src/client/ArkmeEmojiPicker.js'
 import { ArkmeSourceBreadcrumb } from '../src/client/ArkmeSourceBreadcrumb.js'
 import { ArkmeTopicCreateDialog } from '../src/client/ArkmeTopicCreateDialog.js'
+import { ArkmeTopicDirectoryPopover } from '../src/client/ArkmeTopicDirectoryPopover.js'
 import { ArkmeDocumentComposerInput } from '../src/client/ArkmeDocumentComposerInput.js'
 import { ArkmeMemberProfileCard } from '../src/client/ArkmeChatMemberActions.js'
 import { arkmeAuthStore } from '../src/client/auth-store.js'
@@ -52,6 +54,7 @@ import { arkmeComposerDraftStore, arkmeSourceComposerDraftKey } from '../src/cli
 import { arkmeMessageReadReceipts } from '../src/client/message-read-receipt-store.js'
 import { arkmeTheme } from '../src/client/arkme-theme.js'
 import { arkmeUi } from '../src/client/ui-controller.js'
+import { invalidateSelfTopicDirectories, resetSelfTopicDirectories, selfTopicDirectory } from '../src/client/self-topic-directory-cache.js'
 import { ArkmeConversationMemoryCache } from '../src/client/conversation-memory-cache.js'
 
 const target: ArkmeSourceItem = {
@@ -157,6 +160,27 @@ describe('conversation send directory projection', () => {
     })
     return body
   }
+
+  it.each([false, true])('returns to the latest messages after sending a sticker while reading history (around=%s)', async history => {
+    const body = await mountBottomControl(history)
+    expect(body.scrollTop).toBe(200)
+    await act(async () => { await renderer!.root.findByType(ArkmeEmojiPicker).props.onStickerSent() })
+    expect(body.scrollTop).toBe(900)
+    expect(renderer!.root.findAllByProps({ 'data-arkme-message-item-uid': 'bottom-history' })).toHaveLength(0)
+    expect(renderer!.root.findByProps({ 'data-arkme-message-item-uid': 'bottom-latest' })).toBeDefined()
+    expect(renderer!.root.findAllByProps({ 'aria-label': '回到底部' })).toHaveLength(0)
+  })
+
+  it('ignores a sticker send completion from a previous conversation', async () => {
+    const body = await mountBottomControl()
+    const onStickerSent = renderer!.root.findByType(ArkmeEmojiPicker).props.onStickerSent
+    await act(async () => { arkmeUi.selectSource(other) })
+    act(() => { body.scrollTop = 300 })
+    mocks.callArkme.mockClear()
+    await act(async () => { await onStickerSent() })
+    expect(body.scrollTop).toBe(300)
+    expect(mocks.callArkme.mock.calls.filter(([operation]) => operation === 'source.timeline')).toHaveLength(0)
+  })
 
   it('returns to the loaded bottom without new messages or another timeline request', async () => {
     const body = await mountBottomControl()
@@ -459,7 +483,7 @@ describe('conversation send directory projection', () => {
     expect(arkmeCanReeditTimelineMessage({ ...owned, templateKind: 8, displayKind: 0 })).toBe(false)
   })
 
-  it('opens re-edit in the existing composer while preserving the normal draft and isolating rich suggestions', async () => {
+  it('opens re-edit in the existing composer while preserving the normal draft and supporting mention suggestions', async () => {
     Object.assign(window, { innerHeight: 900 })
     timeline = [{
       itemUid: 'record-reedit-ui', messageActionRef: 'opaque-action', senderName: '我', isMe: true,
@@ -535,7 +559,7 @@ describe('conversation send directory projection', () => {
       reeditComposer.props.onSelectionChange('@', 1, 1)
       await Promise.resolve()
     })
-    expect(renderer!.root.findAllByProps({ 'aria-label': '选择要 @ 的对象' })).toHaveLength(0)
+    expect(renderer!.root.findAllByProps({ 'aria-label': '选择要 @ 的对象' })).toHaveLength(1)
   })
 
   it('does not let ordinary attachment preparation disable the independent re-edit input', async () => {
@@ -696,7 +720,7 @@ describe('conversation send directory projection', () => {
     })
 
     expect(mocks.callArkme).toHaveBeenCalledWith('source.record-reedit.draft.put', {
-      sourceRef: 'source-harness', itemUid: 'record-reedit-close', newText: nextText, expectedVersion: 3,
+      sourceRef: 'source-harness', itemUid: 'record-reedit-close', newText: nextText, mentions: [], expectedVersion: 3,
       attachments: [], expectedDraftRevision: 0,
     })
     expect(renderer!.root.findAllByProps({ 'data-arkme-composer-reedit-target': 'true' })).toHaveLength(0)
@@ -993,6 +1017,7 @@ describe('conversation send directory projection', () => {
   })
 
   beforeEach(() => {
+    resetSelfTopicDirectories()
     timeline = []
     aroundTimeline = undefined
     aroundOlderHasMore = false
@@ -1181,8 +1206,8 @@ describe('conversation send directory projection', () => {
         },
       }
       if (operation === 'records.tags.list') return { items: [
-        { normalizedTag: 'projectalpha', tagText: 'ProjectAlpha', recordCount: 7, latestRecordUid: '', latestSendAtMillis: 0 },
-        { normalizedTag: 'product', tagText: 'Product', recordCount: 3, latestRecordUid: '', latestSendAtMillis: 0 },
+        { normalizedTag: 'projectalpha', tagText: 'ProjectAlpha', recordCount: 7, latestRecordUid: '', latestSendAtMillis: 2 },
+        { normalizedTag: 'product', tagText: 'Product', recordCount: 3, latestRecordUid: '', latestSendAtMillis: 1 },
         { normalizedTag: 'meeting', tagText: '会议', recordCount: 2, latestRecordUid: '', latestSendAtMillis: 0 },
       ] }
       throw new Error(`unexpected operation ${operation}`)
@@ -1329,6 +1354,74 @@ describe('conversation send directory projection', () => {
     vi.unstubAllGlobals()
   })
 
+  it.each([target, sendToSelf])('keeps only the shared menu owner while the conversation surface is suspended ($kind)', async previousSource => {
+    arkmeUi.selectSource(previousSource)
+    await act(async () => {
+      renderer = create(<ArkmeSurface productChrome={false} productNavigation={false} active={false} />)
+    })
+    expect(renderer!.root.findAllByProps({ 'data-arkme-surface-suspended': 'true' })).toHaveLength(1)
+    const menus = renderer!.root.findAllByType(ArkmeSourceBreadcrumb)
+    expect(menus).toHaveLength(1)
+    expect(menus[0]!.props.trigger).toBe('none')
+    for (const directory of renderer!.root.findAllByType(ArkmeTopicDirectoryPopover)) {
+      expect(directory.props.selectedSource).toBeUndefined()
+    }
+    expect(mocks.callArkme.mock.calls.filter(([operation]) => operation === 'source.timeline')).toHaveLength(0)
+  })
+
+  it.each([target, group])('renders forward cards before same-time comments on load and live updates ($kind)', async source => {
+    activeSource = source
+    arkmeUi.selectSource(source)
+    const card: ArkmeTimelineItem = {
+      itemUid: 'forward_record_example', sequence: 7, sendAtMillis: 40,
+      senderName: '我', isMe: true, textContent: '转发卡片', status: 1,
+    }
+    const comment = { ...card, itemUid: 'forward_comment_record_example', sequence: 8, textContent: '附言' }
+    timeline = [comment, card]
+    await act(async () => {
+      renderer = create(<ArkmeSurface productChrome={false} productNavigation={false} />)
+    })
+    const messageIds = () => renderer!.root.findAll(node => typeof node.type === 'string'
+      && node.props['data-arkme-message-item-uid'] !== undefined)
+      .map(node => node.props['data-arkme-message-item-uid'])
+    expect(messageIds()).toEqual([card.itemUid, comment.itemUid])
+    const nextCard = { ...card, itemUid: 'forward_record_next', sequence: 9, sendAtMillis: 41 }
+    const nextComment = { ...comment, itemUid: 'forward_comment_record_next', sequence: 10, sendAtMillis: 41 }
+    await act(async () => {
+      arkmeChatTimelineDelta.publish([{ source: { ...source, latestSequence: 10 }, items: [nextComment, nextCard] }])
+    })
+    expect(messageIds()).toEqual([card.itemUid, comment.itemUid, nextCard.itemUid, nextComment.itemUid])
+  })
+
+  it.each([target, group])('keeps same-time forwarding order across older paging and conversation re-entry ($kind)', async source => {
+    const card: ArkmeTimelineItem = { itemUid: 'forward_record_page', sendAtMillis: 40, sequence: 7,
+      senderName: '我', isMe: true, textContent: '转发卡片', status: 1 }
+    const comment = { ...card, itemUid: 'forward_comment_record_page', sequence: 8, textContent: '附言' }
+    const baseCall = mocks.callArkme.getMockImplementation()!
+    mocks.callArkme.mockImplementation(async (operation: string, params?: Record<string, unknown>, signal?: AbortSignal) => {
+      if (operation === 'source.timeline' && params?.sourceRef === source.sourceRef) {
+        return { source, items: params.cursor === undefined ? [comment] : [card],
+          hasMore: params.cursor === undefined, ...(params.cursor === undefined ? { nextCursor: { beforeSequence: 8 } } : {}) }
+      }
+      return baseCall(operation, params, signal)
+    })
+    arkmeChatDirectory.publish([source, other])
+    arkmeUi.selectSource(source)
+    await act(async () => { renderer = create(<ArkmeSurface productChrome={false} productNavigation={false} />) })
+    await act(async () => {
+      renderer!.root.find(node => node.type === 'button' && renderedText(node.props.children) === '继续加载更早消息').props.onClick()
+    })
+    const messageIds = () => renderer!.root.findAll(node => typeof node.type === 'string'
+      && node.props['data-arkme-message-item-uid'] !== undefined).map(node => node.props['data-arkme-message-item-uid'])
+    expect(messageIds()).toEqual([card.itemUid, comment.itemUid])
+    await act(async () => { arkmeUi.selectSource(other) })
+    await act(async () => { arkmeUi.selectSource(source) })
+    expect(messageIds()).toEqual([card.itemUid, comment.itemUid])
+    expect(mocks.callArkme).toHaveBeenCalledWith('source.timeline', {
+      sourceRef: source.sourceRef, limit: 40, cursor: { beforeSequence: 8 },
+    }, expect.any(AbortSignal))
+  })
+
   it.each([false, true])('creates and sends into the new topic without losing the previous draft (child=%s)', async child => {
     vi.stubGlobal('document', { addEventListener: vi.fn(), removeEventListener: vi.fn() })
     const uncategorized: ArkmeSourceItem = { ...sendToSelf, sourceRef: 'default', kind: 'default_category', displayName: '未分类' }
@@ -1373,6 +1466,85 @@ describe('conversation send directory projection', () => {
     await act(async () => { arkmeUi.selectSource(parent) })
     expect(renderer!.root.findByType(ArkmeRichComposerInput).props.value).toBe('原主题未发送草稿')
   })
+
+  it.each([40, 400])('keeps %i loaded records mounted through repeated and burst record invalidations', async rowCount => {
+    const uncategorized = { ...sendToSelf, sourceRef: 'default', kind: 'default_category' as const }
+    const topic = { ...sendToSelf, sourceRef: 'private-topic', kind: 'topic' as const, recordCount: 7 }
+    const page = { items: [sendToSelf, uncategorized, topic], hasMore: false }
+    let pending = deferred<unknown>()
+    const original = mocks.callArkme.getMockImplementation()!
+    let refreshing = false
+    mocks.callArkme.mockImplementation(async (operation, params, signal) => {
+      if (operation === 'sources.list' && params?.directory === 'send_to_self') {
+        return refreshing ? pending.promise : page
+      }
+      if (refreshing && operation === 'source.timeline') {
+        const before = (params?.cursor as { sendAtMillis?: number } | undefined)?.sendAtMillis ?? Infinity
+        const remaining = timeline.filter(item => item.sendAtMillis < before).reverse()
+        const items = remaining.slice(0, 100)
+        const hasMore = remaining.length > items.length
+        return { source: sendToSelf, items, hasMore,
+          ...(hasMore ? { nextCursor: { sendAtMillis: items.at(-1)!.sendAtMillis, itemUid: items.at(-1)!.itemUid } } : {}) }
+      }
+      return original(operation, params, signal)
+    })
+    // Hydrate an already loaded history window; subsequent reads obey the 100-row refresh page limit.
+    activeSource = sendToSelf
+    timeline = Array.from({ length: rowCount }, (_, index) => ({ itemUid: `existing-record-${index}`,
+      senderName: '我', isMe: true, sendAtMillis: index + 1, textContent: '已有消息', status: 1 }))
+    arkmeUi.focusSendToSelf()
+    let commits = 0, renderMillis = 0
+    await act(async () => { renderer = create(<Profiler id="record-refresh" onRender={(_id, _phase, duration) => {
+      commits++; renderMillis += duration
+    }}><ArkmeSurface productChrome={false} productNavigation={false} /></Profiler>) })
+    const composer = renderer!.root.findByType(ArkmeRichComposerInput)
+    const body = renderer!.root.findByProps({ className: 'arkme-conversation-body' })
+    await act(async () => { composer.props.onTextChange('未发送草稿') })
+    refreshing = true
+    mocks.callArkme.mockClear()
+    commits = 0; renderMillis = 0
+    let interruptions = 0
+    // Twenty separated notifications, then twenty arriving in one render turn.
+    for (const burstSize of [...Array<number>(20).fill(1), 20]) {
+      pending = deferred<unknown>()
+      let refresh!: Promise<void>
+      await act(async () => {
+        for (let event = 0; event < burstSize; event++) {
+          invalidateSelfTopicDirectories(true)
+          arkmeUi.recordChanged()
+        }
+        refresh = selfTopicDirectory(42, 'test').ensure(true)
+      })
+      expect(selfTopicDirectory(42, 'test').getSnapshot().sources).toEqual([])
+      expect(renderer!.root.findByType(ArkmeSourceBreadcrumb).props.sources).toEqual([])
+      if (renderer!.root.findAllByType(ArkmeRichComposerInput)[0] !== composer) interruptions++
+      await act(async () => { pending.resolve(page); await refresh })
+    }
+    const reads = Object.fromEntries(['source.timeline', 'sources.list', 'provider.capabilities'].map(operation =>
+      [operation, mocks.callArkme.mock.calls.filter(([called]) => called === operation).length]))
+    process.stdout.write(`record-refresh-profile ${JSON.stringify({ rowCount, events: 40, batches: 21,
+      interruptions, reads, commits, renderMillis: Math.round(renderMillis) })}\n`)
+    expect(interruptions).toBe(0)
+    expect(reads['source.timeline']).toBe(21 * Math.ceil(rowCount / 100))
+    expect(reads['sources.list']).toBe(21)
+    expect(reads['provider.capabilities']).toBe(0)
+    expect(renderer!.root.findByType(ArkmeRichComposerInput)).toBe(composer)
+    expect(renderer!.root.findByProps({ className: 'arkme-conversation-body' })).toBe(body)
+    expect(composer.props.value).toBe('未发送草稿')
+    expect(renderer!.root.findAll(node => node.props['data-arkme-message-content-line'] !== undefined)).toHaveLength(rowCount)
+    mocks.callArkme.mockImplementation(async (operation, params, signal) => {
+      if (operation === 'sources.list' && params?.directory === 'send_to_self') {
+        throw Object.assign(new Error('请重新登录'), { body: { code: 'login-required' } })
+      }
+      return original(operation, params, signal)
+    })
+    await act(async () => {
+      invalidateSelfTopicDirectories(true)
+      await selfTopicDirectory(42, 'test').ensure(true)
+    })
+    expect(renderer!.root.findAllByType(ArkmeRichComposerInput)).toHaveLength(0)
+    expect(renderedText(renderer!.toJSON())).toContain('请重新登录')
+  }, 30_000)
 
   it('shows a partial child-creation warning with the directory closed and retains it after an older read finishes', async () => {
     vi.stubGlobal('document', { addEventListener: vi.fn(), removeEventListener: vi.fn() })
@@ -1779,13 +1951,11 @@ describe('conversation send directory projection', () => {
       renderer!.root.findAllByProps({ 'aria-label': '更多私聊操作' })[0]!.props.onClick()
     })
     const menu = renderer!.root.findByProps({ role: 'menu', 'aria-label': '更多私聊操作' })
-    const refusal = menu.findByProps({ role: 'menuitemcheckbox' })
+    const refusal = menu.findAllByProps({ role: 'menuitem' })
+      .find(node => node.findAll(child => child.children.includes('拒收对方消息')).length > 0)!
     expect(refusal).toBeDefined()
-    expect(refusal.props['aria-checked']).toBe(true)
-    expect(refusal.findByType('span').children).toEqual(['拒收对方消息'])
     await act(async () => { refusal.props.onClick({ detail: 0 }) })
     expect(renderer!.root.findByType(ArkmeRichComposerInput).props.disabled).toBe(false)
-    expect(renderer!.root.findByProps({ role: 'menuitemcheckbox' }).props['aria-checked']).toBe(false)
     expect(mocks.callArkme.mock.calls.filter(call => call[0] === 'chat.direct-message-refusal.set')).toHaveLength(1)
     expect(mocks.callArkme.mock.calls.some(call => call[0] === 'source.send-text')).toBe(false)
   })
@@ -3216,9 +3386,10 @@ describe('conversation send directory projection', () => {
       await Promise.resolve()
     })
     const tagList = renderer!.root.findByProps({ 'aria-label': '选择标签' })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)) })
     const options = tagList.findAllByProps({ role: 'option' })
     expect(options.map(renderedText)).toEqual(['#ProjectAlpha使用 7 次', '#Product使用 3 次'])
-    expect(mocks.callArkme).toHaveBeenCalledWith('records.tags.list', { limit: 100 }, expect.any(AbortSignal))
+    expect(mocks.callArkme).toHaveBeenCalledWith('records.tags.list', { query: 'o', limit: 100 }, expect.any(AbortSignal))
 
     await act(async () => {
       composer.props.onKeyDown({ key: 'ArrowDown', nativeEvent: { isComposing: false }, preventDefault: vi.fn() })
@@ -3284,7 +3455,54 @@ describe('conversation send directory projection', () => {
     })
     const options = renderer!.root.findByProps({ 'aria-label': '选择标签' }).findAllByProps({ role: 'option' })
     expect(options.map(renderedText)).toEqual(['#FreshTag使用 1 次'])
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)) })
+    expect(mocks.callArkme).toHaveBeenCalledWith('records.tags.list', { query: 'fresh', limit: 100 }, expect.any(AbortSignal))
+  })
+
+  it('retries a failed hashtag request without presenting it as an empty search', async () => {
+    const baseCall = mocks.callArkme.getMockImplementation()!
+    let attempts = 0
+    mocks.callArkme.mockImplementation(async (operation: string, params?: Record<string, unknown>, signal?: AbortSignal) => {
+      if (operation !== 'records.tags.list') return baseCall(operation, params, signal)
+      if (++attempts === 1) throw new Error('network unavailable')
+      return { items: [], hasMore: false }
+    })
+    await act(async () => { renderer = create(<ArkmeSurface productChrome={false} productNavigation={false} />) })
+    const composer = renderer!.root.findByType(ArkmeRichComposerInput)
+    await act(async () => { composer.props.onTextChange('#missing'); composer.props.onSelectionChange('#missing', 8, 8) })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)) })
+    const list = renderer!.root.findByProps({ 'aria-label': '选择标签' })
+    expect(renderedText(list)).toContain('标签加载失败')
+    expect(renderedText(list)).not.toContain('暂无匹配标签')
+    await act(async () => { list.findAllByType('button').find(button => renderedText(button) === '重试')!.props.onClick() })
+    expect(renderedText(list)).toContain('暂无匹配标签')
+    expect(attempts).toBe(2)
+  })
+
+  it('discards late hashtag responses and shows 100 results without pagination controls', async () => {
+    const baseCall = mocks.callArkme.getMockImplementation()!
+    let resolveOld!: (value: unknown) => void
+    const item = (tagText: string) => ({ normalizedTag: tagText, tagText, recordCount: 1, latestRecordUid: '', latestSendAtMillis: 1 })
+    mocks.callArkme.mockImplementation(async (operation: string, params?: Record<string, unknown>, signal?: AbortSignal) => {
+      if (operation !== 'records.tags.list') return baseCall(operation, params, signal)
+      if (params?.query === 'old') return new Promise(resolve => { resolveOld = resolve })
+      return { items: Array.from({ length: Number(params?.limit) }, (_, index) => item(`new-${String(index).padStart(3, '0')}`)), hasMore: true, nextCursor: 'next' }
+    })
+    await act(async () => { renderer = create(<ArkmeSurface productChrome={false} productNavigation={false} />) })
+    const composer = renderer!.root.findByType(ArkmeRichComposerInput)
+    await act(async () => { composer.props.onTextChange('#old'); composer.props.onSelectionChange('#old', 4, 4) })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)) })
+    await act(async () => { composer.props.onTextChange('#new'); composer.props.onSelectionChange('#new', 4, 4) })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 250)) })
+    await act(async () => { resolveOld({ items: [item('new-stale')], hasMore: false }) })
+    const list = renderer!.root.findByProps({ 'aria-label': '选择标签' })
+    const options = list.findAllByProps({ role: 'option' })
+    expect(options).toHaveLength(100)
+    expect(renderedText(options[99]!)).toBe('#new-099使用 1 次')
+    expect(renderedText(list)).not.toContain('new-stale')
+    expect(mocks.callArkme).toHaveBeenCalledWith('records.tags.list', { query: 'new', limit: 100 }, expect.any(AbortSignal))
     expect(mocks.callArkme.mock.calls.filter(([operation]) => operation === 'records.tags.list')).toHaveLength(2)
+    expect(renderedText(list)).not.toContain('加载更多')
   })
 
   it('requests location permission on the first supported send and records that message', async () => {
@@ -6809,6 +7027,67 @@ describe('conversation send directory projection', () => {
       'data-arkme-message-item-uid': 'click-away-highlight-target',
     }).findAllByProps({ 'data-arkme-highlight-backdrop': 'true' })).toHaveLength(0)
   })
+
+  it.each(['empty', 'existing-text', 'attachment', 'single-mention', 'self', 'private', 'unavailable'] as const)(
+    'defaults a group extension mention without overwriting user input (%s)', async scenario => {
+      activeSource = scenario === 'private' ? target : group
+      arkmeChatDirectory.publish([other, activeSource])
+      arkmeUi.selectSource(activeSource)
+      timeline = [{
+        itemUid: 'mention-parent', messageActionRef: 'mention-parent-action', memberRef: 'reply-member',
+        senderName: '私有备注', isMe: scenario === 'self', sendAtMillis: 1, title: '', textContent: '原消息', status: 1,
+      }]
+      const baseCall = mocks.callArkme.getMockImplementation()!
+      mocks.callArkme.mockImplementation((operation, ...args) => operation === 'source.members'
+        ? Promise.resolve({ source: activeSource, items: scenario === 'unavailable' ? [] : [{
+          memberRef: 'reply-member', mentionRef: 'reply-mention', mentionDisplayName: '群昵称', displayName: '私有备注',
+          role: 'member', status: 'active', isSelf: scenario === 'self', isOwner: false,
+          joinedAtMillis: 1, recordCount: 0, mentionCount: 0,
+        }], total: 1, activeCount: 1 }) : baseCall(operation, ...args))
+      await act(async () => {
+        renderer = create(<ArkmeSurface productChrome={false} productNavigation={false} />, {
+          createNodeMock: element => element.props.className === 'arkme-conversation-panel'
+            ? { getBoundingClientRect: () => ({ left: 0, top: 0, width: 960, height: 720 }) } : null,
+        })
+      })
+      const draftKey = arkmeSourceComposerDraftKey(42, activeSource)!
+      act(() => {
+        if (scenario === 'existing-text') arkmeComposerDraftStore.setText(draftKey, '已写好的正文')
+        if (scenario === 'single-mention') arkmeComposerDraftStore.insertMention(draftKey, 'old-mention', '旧成员', 0)
+        if (scenario === 'attachment') arkmeComposerDraftStore.appendAttachments(draftKey, [{ localFile: {
+          fileRef: 'arkme-file-v1.00000000-0000-4000-8000-000000000001',
+          fileName: '说明.md', mimeType: 'text/markdown', size: 8, fileKind: 4,
+        } }])
+      })
+      const extend = async () => {
+        const bubble = renderer!.root.findAllByProps({ 'aria-label': '打开快记详情' })[0]!
+        act(() => bubble.props.onContextMenu({ preventDefault: vi.fn(), stopPropagation: vi.fn(), clientX: 120, clientY: 180 }))
+        const menu = renderer!.root.findByProps({ 'aria-label': '消息操作' })
+        await act(async () => { menu.findAll(node => node.props.role === 'menuitem'
+          && node.findAll(child => child.children.includes('延展')).length > 0)[0]!.props.onClick() })
+      }
+      await extend()
+      await extend()
+      const draft = arkmeComposerDraftStore.get(draftKey)
+      if (scenario === 'empty' || scenario === 'single-mention') {
+        expect(draft.text).toBe('@群昵称 ')
+        expect(draft.mentions).toEqual([{ mentionRef: 'reply-mention', displayName: '群昵称', startIndex: 0, length: 4 }])
+        if (scenario === 'empty') {
+          act(() => arkmeComposerDraftStore.setText(draftKey, `${draft.text}补充内容`))
+          await act(async () => { renderer!.root.findByProps({ 'aria-label': '发送消息' }).props.onClick() })
+          expect(mocks.callArkme).toHaveBeenCalledWith('source.message-extension.extend', expect.objectContaining({
+            textContent: '@群昵称 补充内容',
+            humanMentions: [{ mentionRef: 'reply-mention', startIndex: 0, length: 4 }],
+          }))
+        }
+        act(() => arkmeComposerDraftStore.setText(draftKey, ''))
+        expect(arkmeComposerDraftStore.get(draftKey).mentions).toHaveLength(0)
+      } else {
+        expect(draft.text).toBe(scenario === 'existing-text' ? '已写好的正文' : '')
+        expect(draft.mentions).toHaveLength(0)
+      }
+    },
+  )
 
   it('projects a detail-drawer extension into the current conversation and retains it through the immediate refresh', async () => {
     timeline = [{
