@@ -5836,7 +5836,19 @@ describe('conversation send directory projection', () => {
       closest(selector: string) { return selector.includes('input') ? this : null }
     }
     vi.stubGlobal('Element', MediaControl)
-    act(() => { bubble.props.onClick({ target: new MediaControl() }) })
+    const mediaControl = new MediaControl()
+    const contains = vi.fn(() => true)
+    act(() => { bubble.props.onClick({ target: mediaControl, currentTarget: { contains } }) })
+    expect(contains).toHaveBeenCalledWith(mediaControl)
+    expect(renderer!.root.findAllByProps({ 'data-arkme-note-detail': 'true' })).toHaveLength(0)
+
+    // A portaled descendant bubbles through React, but is outside the card DOM.
+    const portalControl = new MediaControl()
+    const closest = vi.spyOn(portalControl, 'closest')
+    const focus = vi.fn()
+    act(() => { bubble.props.onClick({ target: portalControl, currentTarget: { contains: () => false, focus } }) })
+    expect(closest).not.toHaveBeenCalled()
+    expect(focus).not.toHaveBeenCalled()
     expect(renderer!.root.findAllByProps({ 'data-arkme-note-detail': 'true' })).toHaveLength(0)
 
     vi.stubGlobal('HTMLElement', class {})
