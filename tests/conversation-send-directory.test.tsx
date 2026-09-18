@@ -483,7 +483,7 @@ describe('conversation send directory projection', () => {
     expect(arkmeCanReeditTimelineMessage({ ...owned, templateKind: 8, displayKind: 0 })).toBe(false)
   })
 
-  it('opens re-edit in the existing composer while preserving the normal draft and isolating rich suggestions', async () => {
+  it('opens re-edit in the existing composer while preserving the normal draft and supporting mention suggestions', async () => {
     Object.assign(window, { innerHeight: 900 })
     timeline = [{
       itemUid: 'record-reedit-ui', messageActionRef: 'opaque-action', senderName: '我', isMe: true,
@@ -559,7 +559,7 @@ describe('conversation send directory projection', () => {
       reeditComposer.props.onSelectionChange('@', 1, 1)
       await Promise.resolve()
     })
-    expect(renderer!.root.findAllByProps({ 'aria-label': '选择要 @ 的对象' })).toHaveLength(0)
+    expect(renderer!.root.findAllByProps({ 'aria-label': '选择要 @ 的对象' })).toHaveLength(1)
   })
 
   it('does not let ordinary attachment preparation disable the independent re-edit input', async () => {
@@ -720,7 +720,7 @@ describe('conversation send directory projection', () => {
     })
 
     expect(mocks.callArkme).toHaveBeenCalledWith('source.record-reedit.draft.put', {
-      sourceRef: 'source-harness', itemUid: 'record-reedit-close', newText: nextText, expectedVersion: 3,
+      sourceRef: 'source-harness', itemUid: 'record-reedit-close', newText: nextText, mentions: [], expectedVersion: 3,
       attachments: [], expectedDraftRevision: 0,
     })
     expect(renderer!.root.findAllByProps({ 'data-arkme-composer-reedit-target': 'true' })).toHaveLength(0)

@@ -306,6 +306,12 @@ describe('RecordService', () => {
     await expect(service.prepareRecordReedit({
       sourceRef: 'source-ref', itemUid: 'record-mention', newTitle: '只改标题', newText: '@小明 原正文',
     })).resolves.toMatchObject({ newTitle: '只改标题', newTextPreview: '@小明 原正文' })
+    await expect(service.prepareRecordReedit({
+      sourceRef: 'source-ref', itemUid: 'record-mention', newText: '😀 @小明 修改后正文',
+      expectedVersion: 1,
+      mentions: [{ originalIndex: 0, displayName: '小明', startIndex: 3, length: 3 }],
+    })).resolves.toMatchObject({ newTextPreview: '😀 @小明 修改后正文' })
+
   })
 
   it('keeps the draft when the owner version changes before commit', async () => {

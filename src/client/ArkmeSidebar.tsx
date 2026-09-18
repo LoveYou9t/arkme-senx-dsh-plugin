@@ -15,7 +15,7 @@ import { arkmeDetailExtensionComposerStyles } from './detail-extension-composer-
 import { FileTextIcon } from '@phosphor-icons/react/dist/csr/FileText'
 import { ArkmeRecordTopicAssignmentDialog } from './ArkmeRecordTopicAssignmentDialog.js'
 import { retainNewerArkmeChatPolicy } from '../chat-policy-projection.js'
-import { arkmeMarkdownPlainText } from '../markdown.js'
+import { arkmeMarkdownPlainText, arkmeMarkdownTextRanges } from '../markdown.js'
 import { arkmeCallRecordBubbleStyle } from './ArkmeCallRecordContent.js'
 import { arkmeSourceAllowsUserWrite, isArkmeDSHInputTopic, arkmeTopicDisplayName } from '../topic-policy.js'
 import { ArkmeTopicReadOnlyNotice } from './ArkmeTopicReadOnlyNotice.js'
@@ -173,6 +173,7 @@ import {
   type ArkmeConversationViewportRestore,
 } from './conversation-viewport.js'
 import {
+  insertArkmeComposerMentionToken, reconcileArkmeComposerMentions, arkmeComposerAtomicDeletion,
   arkmeComposerCanSend,
   arkmeComposerDraftStore,
   arkmeAttachmentId,
@@ -1508,8 +1509,10 @@ function arkmeRecordReeditFailure(caught: unknown): Pick<ArkmeRecordReeditCompos
 }
 
 function arkmeRecordReeditCandidateKey(title: string, textContent: string, attachments: readonly ArkmeRecordReeditAttachmentView[],
-  textFormat: ArkmeRecordReeditEditorSnapshot['textFormat'] = 'plain'): string {
-  return JSON.stringify([title.trim(), textFormat === 'markdown' ? textContent : textContent.trim(), attachments.map(attachment => attachment.selection)])
+  textFormat: ArkmeRecordReeditEditorSnapshot['textFormat'] = 'plain', mentions: readonly ArkmeComposerMention[] = []): string {
+  return JSON.stringify([title.trim(), textFormat === 'markdown' ? textContent : textContent.trim(), attachments.map(attachment => attachment.selection), mentions.map(mention => ({ ...mention,
+    startIndex: mention.startIndex - (textFormat === 'markdown' ? 0 : textContent.length - textContent.trimStart().length),
+  }))])
 }
 
 function sameArkmeRecordReeditSession(
@@ -2463,9 +2466,8 @@ export function ArkmeSurface({
       || arkmeAuthenticatedAccountKey(arkmeAuthStore.getSnapshot().auth) !== target.accountKey) return false
     const nextTitle = target.title.trim()
     const textFormat = snapshot.textFormat ?? target.item.textFormat
-    const nextText = textFormat === 'markdown' ? target.textContent : target.textContent.trim()
     const supportsTitle = snapshot.displayKind === 1
-    const nextCandidateKey = arkmeRecordReeditCandidateKey(nextTitle, nextText, target.attachments, textFormat)
+    const nextCandidateKey = arkmeRecordReeditCandidateKey(nextTitle, target.textContent, target.attachments, textFormat, target.mentions)
     const alreadyPersisted = () => nextCandidateKey === target.persisted.candidateKey
       && (!forCommit || target.persisted.draftRevision > 0)
     const operation = target.persisted.saveTail.catch(() => undefined).then(async () => {
@@ -2475,7 +2477,8 @@ export function ArkmeSurface({
       const result = await callArkme<{ draftRevision: number }>('source.record-reedit.draft.put', {
         sourceRef: target.sourceRef,
         itemUid: target.item.itemUid,
-        newText: nextText,
+        newText: target.textContent,
+        mentions: target.mentions ?? [],
         expectedVersion: snapshot.draft?.baseVersion ?? snapshot.version,
         expectedDraftRevision: target.persisted.draftRevision,
         attachments: target.attachments.map(attachment => attachment.selection),
@@ -2501,8 +2504,8 @@ export function ArkmeSurface({
     void persistRecordReeditDraft(target).then(saved => {
       if (!saved) return
       updateRecordReeditCandidate(target, current => sameArkmeRecordReeditSession(current, target)
-        && arkmeRecordReeditCandidateKey(current.title, current.textContent, current.attachments, current.snapshot?.textFormat ?? current.item.textFormat)
-          === arkmeRecordReeditCandidateKey(target.title, target.textContent, target.attachments, target.snapshot?.textFormat ?? target.item.textFormat)
+        && arkmeRecordReeditCandidateKey(current.title, current.textContent, current.attachments, current.snapshot?.textFormat ?? current.item.textFormat, current.mentions)
+          === arkmeRecordReeditCandidateKey(target.title, target.textContent, target.attachments, target.snapshot?.textFormat ?? target.item.textFormat, target.mentions)
         && shouldClose()
         ? undefined
         : current)
@@ -5101,7 +5104,7 @@ export function ArkmeSurface({
       if (activeRecordReeditComposer.snapshot === undefined || activeRecordReeditComposer.loading || activeRecordReeditComposer.busy
         || preparationJobs.current.has(arkmeRecordReeditPreparationKey(activeRecordReeditComposer))) return
       setRecordReeditComposer(current => sameArkmeRecordReeditSession(current, activeRecordReeditComposer)
-        ? { ...current, textContent: text, error: '' }
+        ? { ...current, textContent: text, mentions: reconcileArkmeComposerMentions(current.textContent, text, current.mentions ?? [], current.snapshot?.textFormat ?? current.item.textFormat), error: '' }
         : current)
       return
     }
@@ -5262,7 +5265,7 @@ export function ArkmeSurface({
     setHashTagCandidateIndex(0)
     activeHashTagStartRef.current = undefined
     dismissedHashTagStartRef.current = undefined
-  }, [conversationKey, source?.kind])
+  }, [conversationKey, source?.kind, activeRecordReeditComposer?.generation])
   const closeMemberMenu = useCallback(() => { setMemberMenu(undefined) }, [])
   const openMemberMenu = useCallback((member: ArkmeConversationMemberItem, anchorRect: DOMRect) => {
     const host = panelRef.current
@@ -5310,8 +5313,9 @@ export function ArkmeSurface({
   const focusEditedComposer = useCallback((cursor: number) => {
     if (composerDraftKey === undefined) return
     const scope = composerAsyncScopeRef.current
+    const reeditGeneration = recordReeditComposerRef.current?.generation
     requestAnimationFrame(() => {
-      if (composerAsyncScopeRef.current !== scope || !activeConversationRef.current
+      if (recordReeditComposerRef.current?.generation !== reeditGeneration || composerAsyncScopeRef.current !== scope || !activeConversationRef.current
         || arkmeAuthenticatedAccountKey(arkmeAuthStore.getSnapshot().auth) !== scope.accountKey) return
       const editor = textareaRef.current
       if (editor === null || editor.disabled) return
@@ -5320,6 +5324,19 @@ export function ArkmeSurface({
       messagePreparing.input(arkmeComposerDraftStore.get(composerDraftKey).text)
     })
   }, [composerDraftKey, messagePreparing.input])
+  const insertReeditMentionAt = useCallback((identity: Pick<ArkmeComposerMention, 'mentionRef' | 'botRef' | 'all'>,
+    displayName: string, start: number, end: number) => {
+    const target = activeRecordReeditComposer
+    if (!target || target.loading || target.busy || !target.snapshot
+      || preparationJobs.current.has(arkmeRecordReeditPreparationKey(target))) return
+    const inserted = insertArkmeComposerMentionToken({ text: target.textContent, mentions: target.mentions ?? [], emojis: [] }, identity, displayName, start, end, target.snapshot.textFormat ?? target.item.textFormat)
+    if (!inserted) return
+    setRecordReeditComposer(current => sameArkmeRecordReeditSession(current, target)
+      ? { ...current, textContent: inserted.text, mentions: inserted.mentions, error: '' } : current)
+    setMentionTrigger(undefined)
+    setMemberMenu(undefined)
+    focusEditedComposer(inserted.caretIndex)
+  }, [activeRecordReeditComposer, setRecordReeditComposer, focusEditedComposer])
   const insertMemberMentionAt = useCallback((
     member: ArkmeConversationMemberItem,
     selectionStart: number,
@@ -5330,6 +5347,10 @@ export function ArkmeSurface({
       || member.mentionRef === undefined
       || member.mentionDisplayName === undefined
       || !composerMentionsEnabled) return
+    if (activeRecordReeditComposer !== undefined) {
+      insertReeditMentionAt({ mentionRef: member.mentionRef }, member.mentionDisplayName, selectionStart, selectionEnd)
+      return
+    }
     syncComposerUserInput(true)
     const cursor = arkmeComposerDraftStore.insertMention(
       composerDraftKey,
@@ -5342,7 +5363,7 @@ export function ArkmeSurface({
     setMentionTrigger(undefined)
     if (cursor === undefined) return
     focusEditedComposer(cursor)
-  }, [composerDraftKey, composerMentionsEnabled, focusEditedComposer, syncComposerUserInput])
+  }, [activeRecordReeditComposer, insertReeditMentionAt, composerDraftKey, composerMentionsEnabled, focusEditedComposer, syncComposerUserInput])
 
   const insertEmoji = useCallback((emoji: ArkmeEmoji) => {
     if (composerDraftKey === undefined || busy) return
@@ -5362,6 +5383,11 @@ export function ArkmeSurface({
   }, [draft.length, insertMemberMentionAt])
   const insertMentionCandidate = useCallback((member: ArkmeMentionCandidate) => {
     if (mentionTrigger === undefined) return
+    if (activeRecordReeditComposer !== undefined && member.kind !== 'member') {
+      if (member.kind === 'all') insertReeditMentionAt({ all: true }, '所有人', mentionTrigger.startIndex, mentionTrigger.endIndex)
+      else if (member.kind === 'bot') insertReeditMentionAt({ botRef: member.botRef }, member.displayName, mentionTrigger.startIndex, mentionTrigger.endIndex)
+      return
+    }
     if (member.kind === 'all') {
       if (composerDraftKey === undefined || !composerMentionsEnabled) return
       syncComposerUserInput(true)
@@ -5391,7 +5417,7 @@ export function ArkmeSurface({
       return
     }
     insertMemberMentionAt(member, mentionTrigger.startIndex, mentionTrigger.endIndex)
-  }, [composerDraftKey, composerMentionsEnabled, focusEditedComposer, insertMemberMentionAt, mentionTrigger, syncComposerUserInput])
+  }, [activeRecordReeditComposer, insertReeditMentionAt, composerDraftKey, composerMentionsEnabled, focusEditedComposer, insertMemberMentionAt, mentionTrigger, syncComposerUserInput])
   const insertHashTagCandidate = useCallback((item: ArkmeRecordTagItem) => {
     if (activeRecordReeditComposer !== undefined || hashTagTrigger === undefined || composerDraftKey === undefined) return
     syncComposerUserInput(true)
@@ -5412,7 +5438,10 @@ export function ArkmeSurface({
       setHashTagTrigger(undefined)
       activeHashTagStartRef.current = undefined
       dismissedHashTagStartRef.current = undefined
-      setMentionTrigger(undefined)
+      const trigger = composerMentionsEnabled ? arkmeComposerMentionTrigger(text, selectionStart, selectionEnd) : undefined
+      const textFormat = activeRecordReeditComposer.snapshot?.textFormat ?? activeRecordReeditComposer.item.textFormat
+      setMentionTrigger(trigger && textFormat === 'markdown'
+        && !arkmeMarkdownTextRanges(text).some(range => trigger.startIndex >= range.start && trigger.endIndex <= range.end) ? undefined : trigger)
       return
     }
     const nextHashTagTrigger = arkmeHashTagTrigger(text, selectionStart, selectionEnd)
@@ -6153,11 +6182,12 @@ export function ArkmeSurface({
       if (!sameTarget()) return
       const title = snapshot.draft?.title ?? snapshot.title
       const textContent = snapshot.draft?.textContent ?? snapshot.textContent
+      const mentions = snapshot.draft?.mentions ?? snapshot.mentions ?? []
       const attachments = snapshot.draft?.attachments ?? snapshot.attachments ?? []
       setRecordReeditComposer(current => sameArkmeRecordReeditSession(current, target)
         ? {
-          ...current, snapshot, title, textContent, attachments,
-          persisted: { candidateKey: arkmeRecordReeditCandidateKey(title, textContent, attachments, snapshot.textFormat ?? current.item.textFormat), draftRevision: snapshot.draft?.draftRevision ?? 0, saveTail: Promise.resolve() },
+          ...current, snapshot, title, textContent, mentions, attachments,
+          persisted: { candidateKey: arkmeRecordReeditCandidateKey(title, textContent, attachments, snapshot.textFormat ?? current.item.textFormat, mentions), draftRevision: snapshot.draft?.draftRevision ?? 0, saveTail: Promise.resolve() },
           busy: false, conflict: undefined, recoveryConfirmation: false,
           error: draftChanged ? '已重新载入其他入口更新的草稿，请检查后再决定是否放弃' : '',
         } : current)
@@ -6199,6 +6229,7 @@ export function ArkmeSurface({
       snapshot: undefined,
       title: item.title,
       textContent: item.textContent,
+      mentions: [],
       attachments: [],
       persisted: { candidateKey: arkmeRecordReeditCandidateKey(item.title, item.textContent, [], item.textFormat), draftRevision: 0, saveTail: Promise.resolve() },
       loading: true,
@@ -6226,6 +6257,7 @@ export function ArkmeSurface({
       if (recordReeditGenerationRef.current !== generation) return
       const title = snapshot.draft?.title ?? snapshot.title
       const textContent = snapshot.draft?.textContent ?? snapshot.textContent
+      const mentions = snapshot.draft?.mentions ?? snapshot.mentions ?? []
       const attachments = snapshot.draft?.attachments ?? snapshot.attachments ?? []
       setRecordReeditComposer(current => sameArkmeRecordReeditSession(current, target)
         ? {
@@ -6233,8 +6265,9 @@ export function ArkmeSurface({
           snapshot,
           title,
           textContent,
+          mentions,
           attachments,
-          persisted: { candidateKey: arkmeRecordReeditCandidateKey(title, textContent, attachments, snapshot.textFormat ?? item.textFormat), draftRevision: snapshot.draft?.draftRevision ?? 0, saveTail: Promise.resolve() },
+          persisted: { candidateKey: arkmeRecordReeditCandidateKey(title, textContent, attachments, snapshot.textFormat ?? item.textFormat, mentions), draftRevision: snapshot.draft?.draftRevision ?? 0, saveTail: Promise.resolve() },
           loading: false,
         }
         : current)
@@ -7888,7 +7921,7 @@ export function ArkmeSurface({
                   </span>
                 </button>)}
             </div>}
-            {activeRecordReeditComposer === undefined && mentionTrigger !== undefined && <div style={styles.mentionSuggestions} role="listbox" aria-label="选择要 @ 的对象">
+            {mentionTrigger !== undefined && <div style={styles.mentionSuggestions} role="listbox" aria-label="选择要 @ 的对象">
               <ArkmeMentionSuggestionThemeStyles />
               {mentionCandidates.length === 0
                 ? <div style={styles.mentionSuggestionsEmpty}>暂无可 @ 的对象</div>
@@ -7909,7 +7942,7 @@ export function ArkmeSurface({
                   onSelect={() => { insertMentionCandidate(member) }}
                 />)}
             </div>}
-            <ArkmeRichComposerInput markdownEnabled={activeRecordReeditComposer === undefined && markdownQuickNotesEnabled} key={activeRecordReeditComposer === undefined ? composerDraftKey : `record-reedit:${activeRecordReeditComposer.generation}`} className="arkme-conversation-textarea" ref={textareaRef} style={{ ...styles.textarea!, ...composerResize.editorStyle }} value={visibleComposerText} mentions={activeRecordReeditComposer === undefined ? composerDraft.mentions : []} emojis={activeRecordReeditComposer === undefined ? composerDraft.emojis : []} maxLength={activeRecordReeditComposer?.snapshot?.maxTextLength ?? 20000} placeholder={effectiveComposerPlaceholder} ariaLabel={activeRecordReeditComposer === undefined ? effectiveComposerPlaceholder : '重新编辑快记'} disabled={composerFilesDisabled}
+            <ArkmeRichComposerInput textFormat={activeRecordReeditComposer?.snapshot?.textFormat ?? activeRecordReeditComposer?.item.textFormat ?? 'plain'} markdownEnabled={activeRecordReeditComposer === undefined && markdownQuickNotesEnabled} key={activeRecordReeditComposer === undefined ? composerDraftKey : `record-reedit:${activeRecordReeditComposer.generation}`} className="arkme-conversation-textarea" ref={textareaRef} style={{ ...styles.textarea!, ...composerResize.editorStyle }} value={visibleComposerText} mentions={activeRecordReeditComposer === undefined ? composerDraft.mentions : activeRecordReeditComposer.mentions ?? []} emojis={activeRecordReeditComposer === undefined ? composerDraft.emojis : []} maxLength={activeRecordReeditComposer?.snapshot?.maxTextLength ?? 20000} placeholder={effectiveComposerPlaceholder} ariaLabel={activeRecordReeditComposer === undefined ? effectiveComposerPlaceholder : '重新编辑快记'} disabled={composerFilesDisabled}
               markdown={activeRecordReeditComposer === undefined && !directAdmission.blocked ? composerDraft.markdown : undefined}
               onMarkdownChange={(markdown, text, mentions, emojis) => {
                 if (activeRecordReeditComposer === undefined && !directAdmission.blocked) arkmeComposerDraftStore.setMarkdown(composerDraftKey, markdown, text, mentions, emojis)
@@ -7927,6 +7960,7 @@ export function ArkmeSurface({
                 void selectFiles(files)
               }}
               onKeyDown={event => {
+                if (event.nativeEvent.isComposing) return
                 if (activeRecordReeditComposer === undefined && hashTagTrigger !== undefined) {
                   if (event.key === 'Escape') {
                     event.preventDefault()
@@ -7951,7 +7985,7 @@ export function ArkmeSurface({
                     return
                   }
                 }
-                if (activeRecordReeditComposer === undefined && mentionTrigger !== undefined) {
+                if (mentionTrigger !== undefined) {
                   if (event.key === 'Escape') {
                     event.preventDefault()
                     setMentionTrigger(undefined)
@@ -7971,6 +8005,18 @@ export function ArkmeSurface({
                     event.preventDefault()
                     const selectedCandidate = mentionCandidates[Math.min(mentionCandidateIndex, mentionCandidates.length - 1)]
                     if (selectedCandidate !== undefined) insertMentionCandidate(selectedCandidate)
+                    return
+                  }
+                }
+                if (activeRecordReeditComposer !== undefined && !event.nativeEvent.isComposing && (event.key === 'Backspace' || event.key === 'Delete')) {
+                  const deletion = arkmeComposerAtomicDeletion(visibleComposerText, activeRecordReeditComposer.mentions ?? [],
+                    textareaRef.current?.selectionStart ?? visibleComposerText.length,
+                    textareaRef.current?.selectionEnd ?? visibleComposerText.length,
+                    event.key === 'Backspace' ? 'backward' : 'forward')
+                  if (deletion) {
+                    event.preventDefault()
+                    updateComposerText(deletion.text)
+                    focusEditedComposer(deletion.caretIndex)
                     return
                   }
                 }

@@ -1,3 +1,4 @@
+import { encodeMentionMetadata, type ResolvedMentions } from './mention-metadata-codec.js'
 import { recordManualEditFact } from '../record-edit-history.js'
 import type { RecordEditHistoryTarget } from './record-edit-history-service.js'
 import { recordOwnerId, type RecordOwnerId } from '../record-owner-id.js'
@@ -4091,6 +4092,28 @@ export class ChatService {
     signal?: AbortSignal,
     textFormat: 'plain' | 'markdown' = 'plain',
   ): Promise<Record<string, unknown>> {
+    const mentions = await this.resolveMentions(source, rawText, normalizedText, humanInputs, botInputs, session, signal, textFormat)
+    return {
+      payload_kind: 1,
+      schema_version: 1,
+      text_state: 1,
+      ...(arkmeHashTagPayload(normalizedText).length === 0
+        ? {}
+        : { hash_tags: arkmeHashTagPayload(normalizedText) }),
+      mention_metadata: encodeMentionMetadata(normalizedText, mentions),
+    }
+  }
+
+  async resolveMentions(
+    source: ArkmeSourceRefPayload,
+    rawText: string,
+    normalizedText: string,
+    humanInputs: readonly ArkmeHumanMentionInput[],
+    botInputs: readonly ArkmeBotMentionInput[],
+    session: ArkmeSessionCredentials,
+    signal?: AbortSignal,
+    textFormat: 'plain' | 'markdown' = 'plain',
+  ): Promise<ResolvedMentions> {
     if (humanInputs.length > 50) throw new ArkmePluginError('human-mention-invalid', '单条消息 mention 数量过多', false)
     if (botInputs.length > 50) throw new ArkmePluginError('bot-mention-invalid', '单条消息 Bot mention 数量过多', false)
     const [mentions, botMentions] = await Promise.all([
@@ -4114,33 +4137,7 @@ export class ChatService {
         throw new ArkmePluginError('mention-overlap', 'Mention 文本区间重叠', false)
       }
     }
-    const checksumInput = {
-      text_content: normalizedText,
-      human_mentions: mentions.map(mention => ({
-        user_id: mention.user_id,
-        start_index: mention.start_index,
-        length: mention.length,
-      })),
-      bot_mentions: botMentions.map(mention => ({
-        bot_uid: mention.bot_uid,
-        start_index: mention.start_index,
-        length: mention.length,
-      })),
-    }
-    return {
-      payload_kind: 1,
-      schema_version: 1,
-      text_state: 1,
-      ...(arkmeHashTagPayload(normalizedText).length === 0
-        ? {}
-        : { hash_tags: arkmeHashTagPayload(normalizedText) }),
-      mention_metadata: {
-        schema_version: 1,
-        source_checksum: createHash('sha256').update(JSON.stringify(checksumInput)).digest('hex'),
-        ...(mentions.length === 0 ? {} : { human_mentions: mentions }),
-        ...(botMentions.length === 0 ? {} : { bot_mentions: botMentions }),
-      },
-    }
+    return { humans: mentions, bots: botMentions }
   }
 
   private async humanMentionMetadata(
@@ -4350,15 +4347,6 @@ export class ChatService {
       if (visibleText.length > this.runtime.config.maxTextLength) {
         throw new ArkmePluginError('source-text-invalid', '发送内容超过长度限制', false)
       }
-      const checksumInput = {
-        text_content: visibleText,
-        human_mentions: [],
-        bot_mentions: mentions.map(mention => ({
-          bot_uid: mention.bot_uid,
-          start_index: mention.start_index,
-          length: mention.length,
-        })),
-      }
       const contentPayload = {
         payload_kind: 1,
         schema_version: 1,
@@ -4367,8 +4355,7 @@ export class ChatService {
           ? {}
           : { hash_tags: arkmeHashTagPayload(visibleText) }),
         mention_metadata: {
-          schema_version: 1,
-          source_checksum: createHash('sha256').update(JSON.stringify(checksumInput)).digest('hex'),
+          ...encodeMentionMetadata(visibleText, { humans: [], bots: mentions }),
           bot_mentions: mentions,
         },
       }

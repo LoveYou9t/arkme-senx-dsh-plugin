@@ -91,6 +91,8 @@ const expectedServiceFiles = [
   'background-sound-membership-service.ts',
   'file-transfers.ts',
   'record-reedit-attachments.ts',
+  'record-reedit-mentions.ts',
+  'mention-metadata-codec.ts',
   'record-reedit-submissions.ts',
   'service.ts', 'auth-service.ts', 'profile-service.ts', 'bot-service.ts', 'bot-conversation-service.ts', 'source-service.ts',
   'conversation-directory-service.ts', 'conversation-list-preference-service.ts', 'conversation-directory-visibility-service.ts',

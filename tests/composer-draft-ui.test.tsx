@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { useState } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { arkmeComposerTextRuns } from '../src/client/ArkmeMentionTextarea.js'
 import { ArkmeRichComposerInput } from '../src/client/ArkmeRichComposerInput.js'
 import { useMessagePreparing } from '../src/client/use-message-preparing.js'
 import { ArkmeSurface } from '../src/client/ArkmeSidebar.js'
@@ -65,6 +66,13 @@ function stubComposerDom(): void {
 }
 
 describe('composer draft UI projection', () => {
+  it('highlights escaped Markdown mention source without treating plain text as Markdown', () => {
+    const text = String.raw`@a\_b`
+    const mentions = [{ originalIndex: 0, displayName: 'a_b', startIndex: 0, length: text.length }]
+    expect(arkmeComposerTextRuns(text, mentions, [], undefined, 'markdown')).toEqual([{ kind: 'mention', text }])
+    expect(arkmeComposerTextRuns(text, mentions, [])).toEqual([{ kind: 'text', text }])
+  })
+
   afterEach(() => {
     arkmeComposerDraftStore.clearAccount(10001)
     vi.unstubAllGlobals()

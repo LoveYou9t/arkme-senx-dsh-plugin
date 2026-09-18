@@ -1,3 +1,4 @@
+import { parseArkmeRecordReeditMentions } from './record-reedit-contract.js'
 import { recordOwnerId } from './record-owner-id.js'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { readDirectoryPage } from './directory-reader.js'
@@ -2137,6 +2138,7 @@ export async function dispatchArkmeHostOperation(
         sourceRef: stringParam(params, 'sourceRef'),
         itemUid: stringParam(params, 'itemUid'),
         ...(params.newText === undefined ? {} : { newText: stringParam(params, 'newText') }),
+        ...(params.mentions === undefined ? {} : { mentions: parseArkmeRecordReeditMentions(params.mentions) }),
         ...(params.newTitle === undefined ? {} : { newTitle: stringParam(params, 'newTitle') }),
         ...(params.attachments === undefined ? {} : { attachments: parseArkmeRecordReeditAttachments(params.attachments) }),
         ...(params.expectedDraftRevision === undefined ? {} : { expectedDraftRevision: numberParam(params, 'expectedDraftRevision', -1) }),
@@ -2158,6 +2160,7 @@ export async function dispatchArkmeHostOperation(
         sourceRef: stringParam(params, 'sourceRef'),
         itemUid: stringParam(params, 'itemUid'),
         ...(params.newText === undefined ? {} : { newText: stringParam(params, 'newText') }),
+        ...(params.mentions === undefined ? {} : { mentions: parseArkmeRecordReeditMentions(params.mentions) }),
         ...(params.newTitle === undefined ? {} : { newTitle: stringParam(params, 'newTitle') }),
         ...(params.attachments === undefined ? {} : { attachments: parseArkmeRecordReeditAttachments(params.attachments) }),
         ...(params.expectedDraftRevision === undefined ? {} : { expectedDraftRevision: numberParam(params, 'expectedDraftRevision', -1) }),
