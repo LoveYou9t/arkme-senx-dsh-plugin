@@ -3483,3 +3483,28 @@ describe('ChatService', () => {
     expect(remarkLookup).toHaveBeenCalledWith([7], {})
   })
 })
+
+it('preserves long article identity and remaps all forwarded image nodes to snapshot-local aliases', async () => {
+  const runtime = {config} as ServiceRuntime
+  const media = new MediaService(runtime, {} as never, {} as never, {} as never)
+  const chat = new ChatService(runtime, {} as never, {} as never, media, {} as never, {} as never, {} as never, {} as never, {} as never)
+  const files = Array.from({length:100}, (_, i) => ({file_asset_uid:`secret-${i}`,type:1,name:`${i}.png`,mime_type:'image/png',preview_url:`https://jotmo-useraudio-test.oss-cn-hangzhou.aliyuncs.com/${i}.png`}))
+  const result = await chat.chatForwardRecordsPreview({content_payload:{render_kind:'forward_records',items:[{display_kind:1,text_format:'markdown',title:'article',text:files.map(f => `![x](arkme-asset:${f.file_asset_uid})`).join('\n'),files}]}},42,1)
+  const item = result!.items[0]!
+  expect(item.displayKind).toBe(1)
+  expect(item.contentBlocks).toHaveLength(100)
+  expect(item.textContent).toContain('![x](arkme-asset:media-99)')
+  expect(item.contentBlocks![99]!.fileAssetUid).toBe('media-99')
+  expect(item.truncated).toBeUndefined()
+  expect(JSON.stringify(item)).not.toContain('secret-')
+})
+
+it('confirms article delivery only for the exact chat relation and record owner', async () => {
+  let relationUid='other-relation'
+  const runtime={requireSession:async()=>({userId:42}),authenticatedChatPost:async()=>({chat_session_uid:'chat',anchor:{relation:{rel_uid:relationUid,record_uid:'article',record_owner_user_id:42,seq:9},record:{status:1}}})}
+  const chat=new ChatService(runtime as never,{openSourceRef:async()=>({kind:'private_chat',ownerRef:'chat'})} as never,{} as never,{} as never,{} as never,{} as never,{} as never,{} as never,{} as never)
+  const input={title:'article',textContent:'text',recordUid:'article',relationUid:'expected-relation'}
+  await expect(chat.confirmLongArticlePublication('source',input,42)).rejects.toMatchObject({code:'long-article-outcome-unknown'})
+  relationUid='expected-relation'
+  await expect(chat.confirmLongArticlePublication('source',input,42)).resolves.toMatchObject({itemUid:'article',sequence:9,localState:'synced'})
+})

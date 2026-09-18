@@ -61,6 +61,10 @@ import type {
   ArkmeIdMutationResult,
   ArkmeHumanMentionInput,
   ArkmeLongArticleDetail,
+  ArkmeLongArticleImage,
+  ArkmeLongArticleImageFailure,
+  ArkmeLongArticlePublishInput,
+  ArkmeLongArticleUpdateInput,
   ArkmeLongArticleDraft,
   ArkmeMessageReportResult,
   ArkmeMessageWithdrawalResult,
@@ -229,6 +233,10 @@ export type {
   ArkmeIdMutationResult,
   ArkmeHumanMentionInput,
   ArkmeLongArticleDetail,
+  ArkmeLongArticleImage,
+  ArkmeLongArticleImageFailure,
+  ArkmeLongArticlePublishInput,
+  ArkmeLongArticleUpdateInput,
   ArkmeLongArticleDraft,
   ArkmeMessageReportResult,
   ArkmeMessageWithdrawalResult,
@@ -1870,10 +1878,14 @@ export class ArkmeSdk {
     return await this.call<ArkmeLongArticleDetail>('source.long-article.detail', { sourceRef, itemUid }, signal)
   }
 
+  async publishLongArticle(sourceRef: string, input: import('../types.js').ArkmeLongArticlePublishInput, signal?: AbortSignal): Promise<ArkmeSourceSendResult> {
+    return await this.call<ArkmeSourceSendResult>('source.long-article.publish', { sourceRef, ...input }, signal)
+  }
+
   async updateLongArticle(
     sourceRef: string,
     itemUid: string,
-    input: { title: string; textContent: string; version: number; editDurationMillis: number },
+    input: import('../types.js').ArkmeLongArticleUpdateInput,
     signal?: AbortSignal,
   ): Promise<ArkmeLongArticleDetail> {
     if (sourceRef.trim() === '' || itemUid.trim() === '') throw new TypeError('Arkme source and article references must not be empty')
@@ -1939,6 +1951,16 @@ export class ArkmeSdk {
   }
 
   /** Stage locally. Reference-managed files require a Host-persisted draft or task to retain them beyond seven days. */
+  async stageLongArticleImage(file: Blob & { name?: string }, options: { fileName?: string; expectedUserId?: number; signal?: AbortSignal; retention?: 'references' } = {}): Promise<ArkmeLocalFile> {
+    const response = await this.fetchImpl(`${this.route}/files/long-article-stage`, {
+      method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-Arkme-File-Name': encodeURIComponent(options.fileName ?? file.name ?? 'image'), ...expectedUserIdHeaders(options.expectedUserId) },
+      body: file, ...(options.signal === undefined ? {} : { signal: options.signal }),
+    })
+    const payload = await response.json() as ArkmePluginResponse<ArkmeLocalFile>
+    if (!payload.ok) throw new ArkmeClientError(payload.error)
+    return payload.value
+  }
+
   async stageFile(file: Blob & { name?: string }, options: { fileName?: string; expectedUserId?: number; signal?: AbortSignal; retention?: 'references' } = {}): Promise<ArkmeLocalFile> {
     const response = await this.fetchImpl(`${this.route}/files/stage`, {
       method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-Arkme-File-Name': encodeURIComponent(options.fileName ?? file.name ?? 'attachment'), ...expectedUserIdHeaders(options.expectedUserId), ...(options.retention ? { 'X-Arkme-File-Retention': options.retention } : {}) },

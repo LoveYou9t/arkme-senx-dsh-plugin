@@ -15,6 +15,7 @@ import type {
 import { callArkme } from './api.js'
 import { ArkmeCallRecordContent } from './ArkmeCallRecordContent.js'
 import { ArkmeLongArticleDialog } from './ArkmeLongArticleDialog.js'
+import { ArkmeLongArticleBody } from './ArkmeLongArticleBody.js'
 import { ArkmeVoiceContent, arkmeVoiceMediaUrl } from './ArkmeVoiceContent.js'
 import {
   ArkmeFileActionNavButton, ArkmeFileActionToast, ArkmeFileViewer, ArkmeFileActions,
@@ -1040,9 +1041,9 @@ export function ArkmeMessageContent({ item, sourceRef, onLongArticleUpdated, hig
   return <>
     <div style={{ ...styles.stack, ...(presentation === 'detail' ? { width: '100%' } : {}) }} data-arkme-message-content={isArticle ? 'article' : 'message'} data-arkme-content-presentation={presentation}>
       {inlineVoice !== undefined ? renderVoice(inlineVoice, true) : <>
-        {isArticle && presentation === 'bubble' ? <ArticleCard title={item.title} text={item.textContent} onOpen={() => { if (onArticleOpen !== undefined) onArticleOpen(); else setArticleOpen(true) }} /> : <>
+        {isArticle && presentation === 'bubble' ? <ArticleCard title={item.title} text={item.textFormat === 'markdown' ? arkmeMarkdownPlainText(item.textContent) : item.textContent} onOpen={() => { if (onArticleOpen !== undefined) onArticleOpen(); else setArticleOpen(true) }} /> : <>
           {isArticle && item.title && <h3 style={{ margin: 0, fontSize: 14, lineHeight: 1.7 }}><ArkmeRichText text={item.title} presentation="preview" /></h3>}
-          {text !== '' && <LongText
+          {isArticle && bodyTextFormat === 'markdown' ? <ArkmeLongArticleBody text={text} blocks={blocks} textStyle={{ fontSize: 16, lineHeight: '26px' }} /> : text !== '' && <LongText
             textFormat={bodyTextFormat}
             text={text}
             highlightMentions={highlightMentions}
@@ -1056,7 +1057,7 @@ export function ArkmeMessageContent({ item, sourceRef, onLongArticleUpdated, hig
             {...(isMentionClickable === undefined ? {} : { isMentionClickable })}
           />}
         </>}
-        {renderRows}
+        {!(isArticle && bodyTextFormat === 'markdown') && renderRows}
       </>}
       {item.mediaUnavailable === true && (blocks.length > 0 || text !== '') && <p style={{ ...styles.text, color: arkmeTheme.tertiary, fontSize: 12 }}>部分媒体暂时无法加载，请刷新对话后重试</p>}
       {!isArticle && blocks.length === 0 && text === '' && <p style={styles.text}>
@@ -1090,6 +1091,7 @@ export function ArkmeRecordDetailContent({ item, sourceRef, showOriginal = false
     ? item.aiPolish.originalText
     : item.aiPolish?.state === 'polished' && item.aiPolish.polishedText !== undefined
       ? item.aiPolish.polishedText : item.textContent
+  if ((item.displayKind === 1 || item.templateKind === 8) && item.textFormat === 'markdown') return <ArkmeLongArticleBody text={text} blocks={item.contentBlocks} textStyle={{ fontSize: 16, lineHeight: '26px' }} />
   if (item.contentBlocks?.some(block => block.kind === 'audio') === true) {
     return <ArkmeMessageContent item={{ ...item, textContent: text }} {...(sourceRef === undefined ? {} : { sourceRef })} collapseText={false} presentation="detail" highlightMentions />
   }

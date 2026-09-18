@@ -1080,6 +1080,7 @@ export function ForwardRecordsDetail({ item, onClose, sourceBadge }: { item: Ark
     const snapshot: ArkmeTimelineItem = {
       itemUid: `${item.itemUid}-forward-${String(index)}`, senderName: value.senderName, isMe: false, sendAtMillis: value.sendAtMillis,
       status: 1, title: value.title,
+      ...(value.displayKind === undefined ? {} : { displayKind: value.displayKind }),
       textContent: value.textContent || ((value.contentBlocks?.length ?? 0) === 0 ? value.contentLabel ?? '' : ''),
       ...(value.textFormat === undefined ? {} : { textFormat: value.textFormat }),
       ...(value.contentBlocks === undefined ? {} : { contentBlocks: value.contentBlocks }),

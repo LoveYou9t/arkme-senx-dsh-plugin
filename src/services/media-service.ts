@@ -1059,9 +1059,9 @@ export class MediaService {
   }
 
   /** Only the already-authorized received snapshot is used; never hydrate its source IDs. */
-  forwardContentBlocks(files: unknown[], viewerUserId: number): ArkmeContentBlock[] {
+  forwardContentBlocks(files: unknown[], viewerUserId: number, options: { longArticle?: boolean } = {}): ArkmeContentBlock[] {
     if (this.runtime.config.richMediaRenderEnabled === false) return []
-    const displayItems = files.slice(0, 32).map(objectValue).flatMap((file, index) => {
+    const displayItems = (options.longArticle ? files : files.slice(0, 32)).map(objectValue).flatMap((file, index) => {
       if (numberValue(file.content_file_role) === RECORD_CONTENT_FILE_ROLE_BACKGROUND_SOUND) return []
       const trustedUrl = (raw: unknown): string | undefined => {
         const value = safeHttpsUrl(raw)
@@ -1074,17 +1074,24 @@ export class MediaService {
       const downloadUrl = trustedUrl(file.download_url ?? file.downloadUrl)
       const previewUrl = trustedUrl(file.preview_url ?? file.previewUrl)
       return [{
-        // Do not copy file/source IDs into the public projection or stable media cache.
+        // Only item-local aliases are exposed, never source asset IDs.
+        ...(options.longArticle ? { inline_alias: /^arkme-asset:media-\d+$/.test(stringValue(file.inline_ref)) ? stringValue(file.inline_ref).slice('arkme-asset:'.length) : `media-${index}` } : {}),
         file_name: stringValue(file.name ?? file.file_name ?? file.fileName),
         file_kind: numberValue(file.type ?? file.file_kind ?? file.fileKind),
         mime_type: stringValue(file.mime_type ?? file.mimeType),
-        size: numberValue(file.size), sort_order: numberValue(file.order ?? file.sort_order ?? index),
+        size: numberValue(file.size), sort_order: options.longArticle ? index : numberValue(file.order ?? file.sort_order ?? index),
         duration_sec: numberValue(file.duration_sec ?? file.durationSec),
         ...(downloadUrl === undefined ? {} : { download_url: downloadUrl }),
         ...(previewUrl === undefined ? {} : { preview_url: previewUrl }),
       }]
     })
-    return this.richContentBlocks({}, viewerUserId, displayItems)
+    const blocks = this.richContentBlocks({}, viewerUserId, displayItems)
+    // Aliases only join this snapshot's Markdown to its authorized media. They
+    // must not be used as global cache identities across unrelated snapshots.
+    return options.longArticle ? blocks.map(block => {
+      const alias = displayItems.find(item => item.sort_order === block.sortOrder)?.inline_alias
+      return alias === undefined ? block : { ...block, fileAssetUid: alias }
+    }) : blocks
   }
 
   issueImageMediaRef(

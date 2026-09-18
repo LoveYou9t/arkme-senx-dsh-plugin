@@ -6409,3 +6409,85 @@ describe('chat deletion capabilities from hydrated Record payloads', () => {
     expect(deleteBodies).toEqual([{ record_uid: 'own', version: 7 }])
   })
 })
+
+it('supports 100 bound Markdown long article images without changing quick-note limits', async () => {
+  const sessions = new MemorySessionStore()
+  sessions.session = { userId: 10001, accessToken: 'access', refreshToken: 'refresh' }
+  const requests: Record<string, unknown>[] = []
+  const service = new ArkmeService({ ...config, markdownLongArticlesEnabled: true, markdownQuickNotesEnabled: true }, sessions, new MemoryStateStore(), async (input, init) => {
+    const url = String(input); const body = JSON.parse(String(init?.body ?? '{}'))
+    if (url.endsWith('/api/v1/records/privacy/visibility-snapshot')) return json({ code: 0, data: {items:[],has_more:false} })
+    if (url.endsWith('/api/v1/topics/display/list')) return json({ code: 0, data: {items:[]} })
+    if (url.endsWith('/api/v1/topics/hierarchy/relations/list')) return json({ code: 0, data: {relations:[]} })
+    if (url.endsWith('/api/v1/records/uncategorized/summary')) return json({ code: 0, data: {} })
+    if (url.endsWith('/api/v1/records/create')) { requests.push(body); return json({code:0,data:{record_uid:body.record_uid,status:1}}) }
+    throw new Error(`unexpected ${url}`)
+  })
+  const source = (await service.listSources('send_to_self')).items[0]!
+  const assets = Array.from({length:100}, (_, i) => ({fileAssetUid:`image-asset-${i}`,fileName:`${i}.png`,mimeType:'image/png',size:12,fileKind:1 as const}))
+  const textContent = assets.map(a => `![x](arkme-asset:${a.fileAssetUid})`).join('\n')
+  await service.sendSourceRich(source.sourceRef, {title:'images',textContent,textFormat:'markdown',displayKind:1,assets})
+  expect(requests[0]).toMatchObject({template_kind:2,display_kind:1,content_payload:{payload_kind:2,text_format:'markdown'}})
+  expect((requests[0]!.content_payload as {media_refs:unknown[]}).media_refs).toHaveLength(100)
+  await expect(service.sendSourceRich(source.sourceRef, {textContent,textFormat:'markdown',assets})).rejects.toMatchObject({code:'rich-content-invalid'})
+})
+
+it('projects authorized copy-link article images through public inline aliases', async () => {
+  const sessions = new MemorySessionStore()
+  sessions.session = { userId:10001,accessToken:'access',refreshToken:'refresh' }
+  const service = new ArkmeService(config,sessions,new MemoryStateStore(),async input => {
+    if (String(input).endsWith('/api/v1/chats/messages/copy-link/resolve')) return json({code:200,data:{sid:'abcdefghijklmnop',access_mode:'link_read_only',items:[{sender_display_name:'writer',send_at:1700000000,title:'article',display_kind:1,template_kind:2,text_format:'markdown',text_content:'![x](arkme-asset:media-0)',media_items:[{inline_ref:'arkme-asset:media-0',file_kind:1,file_name:'x.png',mime_type:'image/png',preview_url:'https://jotmo-useraudio-test.oss-cn-hangzhou.aliyuncs.com/x.png'}]}]}})
+    throw new Error(`unexpected ${String(input)}`)
+  })
+  const detail = await service.resolveMessageCopyLink('abcdefghijklmnop')
+  expect(detail.items[0]).toMatchObject({displayKind:1,textFormat:'markdown',contentBlocks:[{kind:'image',fileAssetUid:'media-0'}]})
+  expect(JSON.stringify(detail)).not.toContain('https:')
+})
+
+it('reconciles long article publication by exact stable ID and never treats unrelated errors as absence', async () => {
+  const sessions = new MemorySessionStore()
+  sessions.session = {userId:10001,accessToken:'access',refreshToken:'refresh'}
+  let created = false; let creates = 0; let detailFailure = 'record is not found'
+  const service = new ArkmeService({...config,markdownLongArticlesEnabled:true},sessions,new MemoryStateStore(),async (input,init) => {
+    const url=String(input); const body=JSON.parse(String(init?.body ?? '{}'))
+    if (url.endsWith('/api/v1/records/privacy/visibility-snapshot')) return json({code:0,data:{items:[],has_more:false}})
+    if (url.endsWith('/api/v1/topics/display/list')) return json({code:0,data:{items:[]}})
+    if (url.endsWith('/api/v1/topics/hierarchy/relations/list')) return json({code:0,data:{relations:[]}})
+    if (url.endsWith('/api/v1/records/uncategorized/summary')) return json({code:0,data:{}})
+    if (url.endsWith('/api/v1/records/detail')) return created ? json({code:0,data:{record_core:{record_uid:body.record_uid,display_kind:1,owner_user_id:10001,creator_user_id:10001,title:'article',text_content:'# text',content_payload:{text_format:'markdown'},version:1}}}) : json({code:40001,message:detailFailure,data:null})
+    if (url.endsWith('/api/v1/records/create')) { created=true; creates++; return json({code:0,data:{record_uid:body.record_uid,status:1}}) }
+    throw new Error(`unexpected ${url}`)
+  })
+  const source=(await service.listSources('send_to_self')).items[0]!
+  const input={title:'article',textContent:'# text',textFormat:'markdown' as const,images:[],recordUid:'article-123456',relationUid:'relation-123456'}
+  await expect(service.publishLongArticle(source.sourceRef,input)).resolves.toMatchObject({itemUid:input.recordUid})
+  await expect(service.publishLongArticle(source.sourceRef,input)).resolves.toMatchObject({itemUid:input.recordUid})
+  expect(creates).toBe(1)
+  await expect(service.publishLongArticle(source.sourceRef,{...input,textContent:'# changed draft'})).rejects.toMatchObject({code:'long-article-id-conflict'})
+  expect(creates).toBe(1)
+  created=false; detailFailure='permission denied'
+  await expect(service.publishLongArticle(source.sourceRef,{...input,recordUid:'another-123456'})).rejects.toMatchObject({code:'arkme-code-40001',message:'permission denied'})
+  expect(creates).toBe(1)
+})
+
+it('replays an orphaned chat article with the original attach time and stable relation identity', async () => {
+  const sessions=new MemorySessionStore(); sessions.session={userId:10001,accessToken:'access',refreshToken:'refresh'}
+  const sent: Record<string,unknown>[]=[]
+  const service=new ArkmeService({...config,markdownLongArticlesEnabled:true},sessions,new MemoryStateStore(),async (input,init) => {
+    const url=String(input); const body=JSON.parse(String(init?.body ?? '{}'))
+    if(url.endsWith('/api/v1/records/detail')) return json({code:0,data:{record_core:{record_uid:'chat-article-123',origin_container_ref:'chat-1',owner_user_id:10001,creator_user_id:10001,display_kind:1,title:'article',text_content:'# body',content_payload:{text_format:'markdown'},send_at:1700000000000,version:1}}})
+    if(url.endsWith('/api/v1/chats/records/send')) { sent.push(body); return json({code:200,data:{record_uid:body.record_uid,rel_uid:body.rel_uid,seq:8,status:1}}) }
+    throw new Error(`unexpected ${url}`)
+  })
+  await expect(service.publishLongArticle(sourceRefFor('private_chat','chat-1','peer'),{title:'article',textContent:'# body',textFormat:'markdown',images:[],recordUid:'chat-article-123',relationUid:'chat-relation-123'})).resolves.toMatchObject({itemUid:'chat-article-123',sequence:8})
+  expect(sent).toHaveLength(1)
+  expect(sent[0]).toMatchObject({record_uid:'chat-article-123',rel_uid:'chat-relation-123',send_at:1700000000000})
+})
+
+it('uses the fixed 50 MiB image limit without querying server capabilities', async () => {
+  const sessions=new MemorySessionStore(); sessions.session={userId:10001,accessToken:'access',refreshToken:'refresh'}
+  const fetchImpl=vi.fn(async () => { throw new Error('unexpected network request') })
+  const service=new ArkmeService({...config,markdownLongArticlesEnabled:true,maxUploadBytes:200},sessions,new MemoryStateStore(),fetchImpl)
+  await expect(service.stageLongArticleImage('/unused',{fileName:'large.png',mimeType:'image/png',size:50 * 1024 * 1024 + 1})).rejects.toMatchObject({code:'long-article-image-too-large'})
+  expect(fetchImpl).not.toHaveBeenCalled()
+})

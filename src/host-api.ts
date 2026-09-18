@@ -951,6 +951,7 @@ export function createArkmeHostApi(service: ArkmeService, options: ArkmeHostApiO
           ...(known.retryAfterMillis === undefined ? {} : { retryAfterMillis: known.retryAfterMillis }),
           ...(known.retryScope === undefined ? {} : { retryScope: known.retryScope }),
           ...(known.recovery === undefined ? {} : { recovery: known.recovery }),
+          ...(known.imageFailures === undefined ? {} : { imageFailures: known.imageFailures }),
           ...(known instanceof ArkmeDirectMessageAdmissionError ? { directMessageAdmission: known.admission } : {}) },
       })
     } finally {
@@ -2088,6 +2089,14 @@ export async function dispatchArkmeHostOperation(
     case 'favorite-stickers.manage': return await service.manageFavoriteSticker(
       stringParam(params, 'fileAssetUid'), favoriteStickerManageActionParam(params),
     )
+    case 'source.long-article.publish': return await service.publishLongArticle(stringParam(params, 'sourceRef'), {
+      title: stringParam(params, 'title'), textContent: stringParam(params, 'textContent'),
+      textFormat: params.textFormat === 'markdown' ? 'markdown' : 'plain',
+      ...(params.images === undefined ? {} : { images: longArticleImagesParam(params)! }),
+      recordUid: stringParam(params, 'recordUid'), relationUid: stringParam(params, 'relationUid'),
+      recordDurationMillis: Math.max(0, Math.trunc(numberParam(params, 'recordDurationMillis', 0))),
+      ...(captureContextParam(params) === undefined ? {} : { captureContext: captureContextParam(params)! }),
+    }, requestSignal)
     case 'source.long-article.detail': return await service.longArticleDetail(
       stringParam(params, 'sourceRef'),
       stringParam(params, 'itemUid'),
@@ -2098,6 +2107,8 @@ export async function dispatchArkmeHostOperation(
       {
         title: stringParam(params, 'title'),
         textContent: stringParam(params, 'textContent'),
+        ...(params.textFormat === 'markdown' || params.textFormat === 'plain' ? { textFormat: params.textFormat } : {}),
+        ...(params.images === undefined ? {} : { images: longArticleImagesParam(params)! }),
         version: Math.trunc(numberParam(params, 'version', 0)),
         editDurationMillis: Math.max(0, Math.trunc(numberParam(params, 'editDurationMillis', 0))),
       },
@@ -2107,6 +2118,12 @@ export async function dispatchArkmeHostOperation(
       stringParam(params, 'itemUid') || undefined,
     )
     case 'source.long-article.draft.put': return await service.putLongArticleDraft({
+      ...(typeof params.baseVersion === 'number' && Number.isSafeInteger(params.baseVersion) && params.baseVersion > 0 ? { baseVersion: params.baseVersion } : {}),
+      ...(params.textFormat === 'markdown' || params.textFormat === 'plain' ? { textFormat: params.textFormat } : {}),
+      ...(params.images === undefined ? {} : { images: longArticleImagesParam(params)! }),
+      ...(params.document && typeof params.document === 'object' && !Array.isArray(params.document) ? { document: params.document as Record<string, unknown> } : {}),
+      ...(typeof params.recordUid === 'string' ? { recordUid: params.recordUid } : {}),
+      ...(typeof params.relationUid === 'string' ? { relationUid: params.relationUid } : {}),
       sourceRef: stringParam(params, 'sourceRef'),
       ...(stringParam(params, 'itemUid') === '' ? {} : { itemUid: stringParam(params, 'itemUid') }),
       title: stringParam(params, 'title'),
@@ -2484,4 +2501,15 @@ function extensionEditableVisibilityParam(params: Record<string, unknown>): 'pri
     throw new ArkmePluginError('extension-metadata-invalid', '扩展可见范围无效', false, 400)
   }
   return value
+}
+
+function longArticleImagesParam(params: Record<string, unknown>): import('./types.js').ArkmeLongArticleImage[] | undefined {
+  if (params.images === undefined) return undefined
+  if (!Array.isArray(params.images)) throw new TypeError('Long article images must be an array')
+  return params.images.map(value => {
+    if (!value || typeof value !== 'object') throw new TypeError('Invalid long article image')
+    const image = value as Record<string, unknown>
+    if (typeof image.fileRef !== 'string' && typeof image.fileAssetUid !== 'string') throw new TypeError('Image reference is required')
+    return { ...(typeof image.fileRef === 'string' ? {fileRef:image.fileRef} : {}), ...(typeof image.fileAssetUid === 'string' ? {fileAssetUid:image.fileAssetUid} : {}) }
+  })
 }

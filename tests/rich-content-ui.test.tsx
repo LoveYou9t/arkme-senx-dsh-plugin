@@ -15,6 +15,25 @@ import { ArkmeTimelineDetailDrawer, ForwardRecordsDetail } from '../src/client/A
 import { arkmeClipboardImageFiles, arkmeShouldDismissAnchoredMenu, arkmeShouldToggleMessageSelectFromRowClick } from '../src/client/ArkmeSidebar.js'
 
 describe('Arkme rich content presentation', () => {
+  it('keeps forwarded article images between paragraphs without a duplicate attachment gallery', () => {
+    const html = renderToStaticMarkup(<ForwardRecordsDetail onClose={() => {}} item={{
+      itemUid: 'forward-article', senderName: '我', isMe: true, sendAtMillis: 1, status: 1, title: '', textContent: '',
+      forwardRecords: { title: '转发长文', createdAtMillis: 1, summaryLines: [], items: [{
+        senderName: '作者', sendAtMillis: 1, title: '文章标题', displayKind: 1,
+        textFormat: 'markdown', textContent: '图片前段落\n\n![正文图片](arkme-asset:media-0)\n\n图片后段落',
+        contentBlocks: [{ kind: 'image', fileAssetUid: 'media-0', mediaRef: 'forward-image',
+          fileName: 'photo.png', mimeType: 'image/png', size: 1, sortOrder: 0 }],
+      }] },
+    }} />)
+    expect(html).toContain('data-arkme-message-content="article"')
+    expect(html).not.toContain('arkme-asset:media-0')
+    expect(html.match(/<img /g)).toHaveLength(1)
+    expect(html).not.toContain('data-arkme-media-count')
+    const imagePosition = html.indexOf('<img ')
+    expect(html.indexOf('图片前段落')).toBeLessThan(imagePosition)
+    expect(html.indexOf('图片后段落')).toBeGreaterThan(imagePosition)
+  })
+
   it('uses the Flutter Live ring geometry without an unavailable-state glyph', () => {
     const compact = renderToStaticMarkup(<ArkmeLivePhotoBadge variant="thumbnail" />)
     expect(compact).toContain('width="16" height="16"')
@@ -1115,7 +1134,7 @@ describe('Arkme rich content presentation', () => {
     const html = renderToStaticMarkup(<ArkmeLongArticleDialog sourceRef="source-1" onClose={() => undefined} />)
     expect(html).toContain('data-arkme-long-article-dialog="create"')
     expect(html).toContain('placeholder="请输入标题"')
-    expect(html).toContain('placeholder="请输入正文内容"')
+    expect(html).toContain('正在加载长文')
     expect(html).toContain('0秒')
     expect(html).toContain('0字')
     expect(html).toContain('发布')

@@ -812,6 +812,10 @@ export class RecordService {
     } else if (numberValue(core.owner_user_id) !== session.userId) {
       throw new ArkmePluginError('long-article-source-mismatch', '长文不属于当前会话', false, 403)
     }
+    const contentBlocks = listValue(objectValue(core.content_payload).media_refs).length === 0 ? [] : await (async () => {
+      const hydration = await this.media.hydrateRecordMediaPage([data], session)
+      return this.media.richContentBlocks(data, session.userId, hydration.displayItemsByRecordUid.get(recordUid) ?? [])
+    })()
     const recordDurationMillis = Math.max(0, Math.trunc(numberValue(core.record_duration_millis)))
     const editDurationMillis = Math.max(0, Math.trunc(numberValue(core.edit_duration_millis)))
     return {
@@ -820,6 +824,7 @@ export class RecordService {
       title: stringValue(core.title),
       textContent: stringValue(core.text_content),
       textFormat: arkmeRecordTextFormat(core),
+      contentBlocks,
       sendAtMillis: Math.trunc(numberValue(core.send_at)),
       updateAtMillis: Math.trunc(numberValue(core.update_at)),
       recordDurationMillis,
@@ -833,7 +838,7 @@ export class RecordService {
   async updateLongArticle(
     sourceRef: string,
     itemUid: string,
-    input: { title: string; textContent: string; version: number; editDurationMillis: number },
+    input: import('../types.js').ArkmeLongArticleUpdateInput & { assets?: import('../types.js').ArkmeUploadedAsset[] },
   ): Promise<ArkmeLongArticleDetail> {
     if (this.runtime.config.richMediaSendEnabled === false) {
       throw new ArkmePluginError('rich-content-disabled', '长文编辑已被插件配置关闭', false, 403)
@@ -846,23 +851,39 @@ export class RecordService {
       await this.runtime.stateStore.getRecordReeditDraft(session.userId, sourceIdentityKey, itemUid),
     )
     const title = input.title.trim()
-    const textContent = detail.textFormat === 'markdown' ? input.textContent : input.textContent.trim()
+    const textFormat = input.textFormat ?? detail.textFormat ?? 'plain'
+    const textContent = textFormat === 'markdown' ? input.textContent : input.textContent.trim()
+    const assets = input.assets ?? []
     const editDurationMillis = Math.max(0, Math.trunc(input.editDurationMillis))
     if (!detail.editable) throw new ArkmePluginError('long-article-not-editable', '只能编辑自己发布的长文', false, 403)
     if (title === '' || title.length > 100 || textContent === '' || textContent.length > 40000
       || !Number.isSafeInteger(input.version) || input.version <= 0 || input.version !== detail.version) {
       throw new ArkmePluginError('long-article-update-invalid', '长文内容或版本无效，请刷新后重试', false, 409)
     }
+    try {
     await this.runtime.authenticatedPost<Record<string, unknown>>('/api/v1/records/update', {
       record_uid: detail.itemUid,
-      template_kind: 1,
+      template_kind: assets.length ? 2 : 1,
+      content_payload: { schema_version: 1, payload_kind: assets.length ? 2 : 1, text_state: textContent ? 1 : 3, text_format: textFormat,
+        media_refs: assets.map((asset, index) => ({ file_asset_uid: asset.fileAssetUid, content_file_role: 1, render_role: 1, sort_order: index, file_name: asset.fileName })) },
       display_kind: 1,
       title,
       text_content: textContent,
       record_duration_millis: detail.recordDurationMillis,
       edit_duration_millis: editDurationMillis,
       version: detail.version,
-    }, session)
+    }, session, undefined, { trackWriteOutcome: true })
+    } catch (error) {
+      if (error instanceof ArkmePluginError && error.writeOutcomeUnknown) {
+        try {
+          const confirmed = await this.longArticleDetail(sourceRef, itemUid)
+          const expectedAssets = assets.map(asset => asset.fileAssetUid).sort().join(',')
+          const actualAssets = (confirmed.contentBlocks ?? []).map(block => block.fileAssetUid).filter(Boolean).sort().join(',')
+          if (confirmed.version === detail.version + 1 && confirmed.title === title && confirmed.textContent === textContent && confirmed.textFormat === textFormat && expectedAssets === actualAssets) return confirmed
+        } catch { /* A failed reconciliation must retain the original uncertain outcome. */ }
+      }
+      throw error
+    }
     return await this.longArticleDetail(sourceRef, itemUid)
   }
 
@@ -870,7 +891,8 @@ export class RecordService {
     const session = await this.runtime.requireSession()
     const source = await this.source.openSourceRef(sourceRef, session.userId)
     const uid = itemUid?.trim() || undefined
-    if (uid === undefined) return await this.runtime.stateStore.getLongArticleDraft(session.userId, sourceRef)
+    const richDraft = await this.runtime.stateStore.getLongArticleDraft(session.userId, sourceRef, uid)
+    if (uid === undefined || richDraft?.textFormat === 'markdown' || richDraft?.images !== undefined) return richDraft
     const sourceIdentityKey = await this.recordReeditSourceIdentityKey(source)
     const current = await this.runtime.stateStore.getRecordReeditDraft(session.userId, sourceIdentityKey, uid)
     this.assertLongArticleDraftHasNoAttachmentChanges(current)
@@ -902,14 +924,19 @@ export class RecordService {
     if (draft.title.length > 100 || draft.textContent.length > 40000 || draft.durationMillis < 0) {
       throw new ArkmePluginError('long-article-draft-invalid', '长文草稿内容无效', false)
     }
-    if (itemUid === undefined) {
-      await this.runtime.stateStore.putLongArticleDraft(session.userId, {
+    if (itemUid === undefined || draft.textFormat === 'markdown' || draft.images !== undefined) {
+      if (itemUid !== undefined && (!Number.isSafeInteger(draft.baseVersion) || (draft.baseVersion ?? 0) <= 0)) throw new ArkmePluginError('long-article-draft-base-version-required', '缺少草稿原版本，无法安全恢复，请保留内容后重新加载', false, 409)
+      const persist = async () => await this.runtime.stateStore.putLongArticleDraft(session.userId, {
+        ...draft,
         sourceRef: draft.sourceRef,
         title: draft.title,
         textContent: draft.textContent,
         durationMillis: Math.max(0, Math.trunc(draft.durationMillis)),
         updatedAtMillis: Date.now(),
       })
+      const refs = draft.images?.flatMap(image => image.fileRef ? [image.fileRef] : []) ?? []
+      if (refs.length) await this.recordReeditFiles().withReferences(refs, session.userId, persist)
+      else await persist()
       return
     }
     const sourceIdentityKey = await this.recordReeditSourceIdentityKey(source)
@@ -1167,6 +1194,7 @@ export class RecordService {
     return {
       sourceRef,
       itemUid: draft.itemUid,
+      baseVersion: draft.baseVersion,
       title: draft.title,
       textContent: draft.textContent,
       durationMillis: draft.editDurationMillis,

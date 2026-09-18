@@ -32,11 +32,12 @@ it('passes contact detail request cancellation to each existing business owner',
   expect(service.openDirectoryContactChat).toHaveBeenCalledWith('contact-ref', controller.signal)
 })
 
-it('serializes only safe Host recovery metadata across the real HTTP boundary', async () => {
+it('serializes only safe Host recovery and image failure metadata across the real HTTP boundary', async () => {
   const service = { listDirectory: async () => {
     throw new ArkmePluginError('arkme-code-1002', '服务器繁忙', true, 502, {
       failureKind: 'rate_limited', retryAfterMillis: 1200, retryScope: 'route',
       recovery: { owner: 'host', attempts: 3, exhausted: true },
+      imageFailures: [{ fileRef: 'arkme-file-v1.failed', fileName: 'image.png', phase: 'upload' }],
       responseData: { accessToken: 'must-not-leak' }, cause: new Error('private-upstream-details'),
     })
   } }
@@ -55,6 +56,7 @@ it('serializes only safe Host recovery metadata across the real HTTP boundary', 
       code: 'arkme-code-1002', message: '服务器繁忙', retryable: true,
       failureKind: 'rate_limited', retryAfterMillis: 1200, retryScope: 'route',
       recovery: { owner: 'host', attempts: 3, exhausted: true },
+      imageFailures: [{ fileRef: 'arkme-file-v1.failed', fileName: 'image.png', phase: 'upload' }],
     } })
   } finally {
     server.close()
@@ -1663,4 +1665,13 @@ it('resolves the self target from the session without accepting a caller account
   const signal = new AbortController().signal
   await dispatchArkmeHostOperation(service as never, 'sources.self-target', { userId: 999 }, undefined, undefined, undefined, undefined, signal)
   expect(service.selfTarget).toHaveBeenCalledWith(signal)
+})
+
+it('routes long article images and durable draft metadata without trusting prepared assets', async () => {
+  const service = { publishLongArticle: vi.fn(), updateLongArticle: vi.fn(), putLongArticleDraft: vi.fn() }
+  const input = { sourceRef:'source', title:'title', textContent:'![x](arkme-local:arkme-file-v1.a)',textFormat:'markdown',images:[{fileRef:'arkme-file-v1.a'}],recordUid:'record-uid',relationUid:'relation-uid',assets:[{fileAssetUid:'untrusted'}] }
+  await dispatchArkmeHostOperation(service as never, 'source.long-article.publish', input)
+  expect(service.publishLongArticle).toHaveBeenCalledWith('source', {title:'title',textContent:input.textContent,textFormat:'markdown',images:input.images,recordUid:'record-uid',relationUid:'relation-uid',recordDurationMillis:0}, undefined)
+  await dispatchArkmeHostOperation(service as never, 'source.long-article.draft.put', {...input,document:{type:'doc'}})
+  expect(service.putLongArticleDraft).toHaveBeenCalledWith(expect.objectContaining({textFormat:'markdown',images:input.images,recordUid:'record-uid',relationUid:'relation-uid',document:{type:'doc'}}))
 })

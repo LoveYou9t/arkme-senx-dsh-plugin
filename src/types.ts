@@ -1204,6 +1204,7 @@ export interface ArkmeProviderCapabilities {
     /** Group owners can withdraw peer messages, remove members, and manage future join restrictions. */
     groupOwnerGovernance?: true
     markdownQuickNotes?: true
+    markdownLongArticles?: true
     richContentRead: boolean
     richContentSend: boolean
     /** Explicit text background-sound descriptors are supported by direct and durable rich sends. */
@@ -1821,6 +1822,7 @@ export interface ArkmeForwardTranscriptSegment {
 }
 
 export interface ArkmeForwardRecordPreviewItem {
+  displayKind?: number
   senderName: string
   /** Opaque Provider image reference for the snapshotted sender. */
   avatarRef?: string
@@ -2036,7 +2038,27 @@ export interface ArkmeBotMentionInput {
   length: number
 }
 
+export interface ArkmeLongArticleImage { fileRef?: string; fileAssetUid?: string }
+export interface ArkmeLongArticlePublishInput {
+  title: string
+  textContent: string
+  textFormat?: 'plain' | 'markdown'
+  images?: ArkmeLongArticleImage[]
+  recordUid: string
+  relationUid: string
+  recordDurationMillis?: number
+  captureContext?: ArkmeRecordCaptureContext
+}
+export interface ArkmeLongArticleUpdateInput {
+  title: string
+  textContent: string
+  textFormat?: 'plain' | 'markdown'
+  images?: ArkmeLongArticleImage[]
+  version: number
+  editDurationMillis: number
+}
 export interface ArkmeLongArticleDetail {
+  contentBlocks?: ArkmeContentBlock[]
   sourceRef: string
   itemUid: string
   title: string
@@ -2053,6 +2075,11 @@ export interface ArkmeLongArticleDetail {
 }
 
 export interface ArkmeLongArticleDraft {
+  baseVersion?: number
+  document?: Record<string, unknown>
+  images?: ArkmeLongArticleImage[]
+  recordUid?: string
+  relationUid?: string
   sourceRef: string
   itemUid?: string
   title: string
@@ -3552,6 +3579,7 @@ export type ArkmePluginOperation =
   | 'files.send.tasks'
   | 'files.send.retry'
   | 'files.receive'
+  | 'source.long-article.publish'
   | 'source.long-article.detail'
   | 'source.long-article.update'
   | 'source.long-article.draft.get'
@@ -3716,7 +3744,15 @@ export interface ArkmePluginRequest {
   params?: Record<string, unknown>
 }
 
+export interface ArkmeLongArticleImageFailure {
+  fileRef?: string
+  fileAssetUid?: string
+  fileName: string
+  phase: 'validation' | 'upload'
+}
+
 export interface ArkmePluginErrorBody {
+  imageFailures?: ArkmeLongArticleImageFailure[]
   code: string
   message: string
   retryable: boolean

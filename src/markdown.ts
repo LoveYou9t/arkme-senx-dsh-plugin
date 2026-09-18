@@ -23,6 +23,8 @@ export function arkmeRecordTextFormat(value: unknown): ArkmeTextFormat {
 
 interface MarkdownNode {
   type: string
+  url?: string
+  alt?: string | null | undefined
   value?: string
   children?: MarkdownNode[]
   data?: { hName?: string | undefined; hProperties?: Record<string, unknown> | undefined } | undefined
@@ -39,9 +41,10 @@ export function arkmeEscapeMarkdownText(text: string): string {
 }
 
 /** The editor must also retain unsupported constructs on paste/import, before Marked parses HTML. */
-export function arkmeMarkdownEditorSource(source: string): string {
+export function arkmeMarkdownEditorSource(source: string, articleImages = false): string {
   const replacements: { start: number; end: number }[] = []
   const visit = (node: MarkdownNode) => {
+    if (articleImages && node.type === 'image' && arkmeArticleImageReference(node.url ?? '')) return
     if (['html', 'image', 'imageReference'].includes(node.type)) {
       const start = node.position?.start.offset
       const end = node.position?.end.offset
@@ -114,6 +117,7 @@ export function arkmeMarkdownPlainText(source: string): string {
   const read = (node: MarkdownNode): string => {
     if (node.type === 'definition') return ''
     if (node.type === 'image' || node.type === 'imageReference') {
+      if (node.type === 'image' && arkmeArticleImageReference(node.url ?? '')) return '[图片]'
       return source.slice(node.position?.start.offset, node.position?.end.offset)
     }
     if (node.value !== undefined) return node.value
@@ -125,10 +129,19 @@ export function arkmeMarkdownPlainText(source: string): string {
 }
 
 /** HTML and inline images remain visible source; neither becomes an active browser element. */
-export function arkmeLiteralMarkdownNodes() {
+export function arkmeArticleImageReference(value: string): boolean {
+  return /^arkme-asset:[A-Za-z0-9._:-]{1,256}$/u.test(value)
+    || /^arkme-local:arkme-file-v1\.[0-9a-f-]{36}$/u.test(value)
+}
+
+export function arkmeLiteralMarkdownNodes(options?: { articleImages?: boolean }) {
   return (tree: MarkdownNode, file: { value?: unknown }) => {
     const source = String(file.value ?? '')
     const visit = (node: MarkdownNode) => {
+      if (options?.articleImages && node.type === 'image' && /^arkme-asset:[A-Za-z0-9._:-]{1,256}$/u.test(node.url ?? '')) {
+        node.data = { hName: 'span', hProperties: { 'data-arkme-image-ref': node.url, 'data-arkme-image-alt': node.alt ?? '' } }
+        return
+      }
       if (['html', 'image', 'imageReference'].includes(node.type)) {
         node.type = 'text'
         node.value = source.slice(node.position?.start.offset, node.position?.end.offset)

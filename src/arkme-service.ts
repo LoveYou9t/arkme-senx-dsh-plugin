@@ -52,6 +52,7 @@ import { ArkoService } from './services/arko-service.js'
 import { ArrangementService } from './services/arrangement-service.js'
 import { AuthService, jiwoScanLoginAvailable } from './services/auth-service.js'
 import { BackgroundSoundMembershipService } from './services/background-sound-membership-service.js'
+import { LONG_ARTICLE_IMAGE_MAX_BYTES, resolveLongArticleContent, longArticleImageDestinations } from './long-article-content.js'
 import { BackgroundSoundPreferenceService } from './services/background-sound-preference-service.js'
 import { BotService, type ArkmeBotManageUpdateInput, type ArkmeBotRefPayload } from './services/bot-service.js'
 import { BotConversationService } from './services/bot-conversation-service.js'
@@ -511,6 +512,11 @@ export class ArkmeService {
   fileCapabilities() { return this.filesOwner().capabilities() }
   async fileSearch(options: { query?: string; limit: number; cursor?: string; signal?: AbortSignal }) { return await this.search.searchFiles(options) }
   async fileSessionUser() { return (await this.runtime.requireSession()).userId }
+  async stageLongArticleImage(path: string, metadata: Pick<ArkmeLocalFile, 'fileName' | 'mimeType' | 'size'>, expectedUserId?: number) {
+    if (this.config.markdownLongArticlesEnabled !== true) throw new ArkmePluginError('markdown-send-disabled', 'Markdown 长文尚未开放', false, 403)
+    if (metadata.size <= 0 || metadata.size > LONG_ARTICLE_IMAGE_MAX_BYTES) throw new ArkmePluginError('long-article-image-too-large', `${metadata.fileName} 大小 ${metadata.size} 字节，上限 ${LONG_ARTICLE_IMAGE_MAX_BYTES} 字节`, false)
+    return await this.filesOwner().stageLongArticleImage(path, metadata, expectedUserId)
+  }
   async fileStage(path: string, metadata: Pick<ArkmeLocalFile, 'fileName' | 'mimeType' | 'size'>, expectedUserId?: number, retention?: 'references') { return await this.filesOwner().stage(path, metadata, expectedUserId, retention) }
   async fileList() { return await this.filesOwner().files() }
   async fileReadLocal(ref: string) { return await this.filesOwner().readLocal(ref) }
@@ -763,6 +769,7 @@ export class ArkmeService {
         directMessageAdmission: true,
         groupOwnerGovernance: true,
         ...(this.config.markdownQuickNotesEnabled === true ? { markdownQuickNotes: true as const } : {}),
+        ...(this.config.markdownLongArticlesEnabled === true ? { markdownLongArticles: true as const } : {}),
         richContentRead: this.config.richMediaRenderEnabled !== false,
         richContentSend: this.config.richMediaSendEnabled !== false,
         ...(this.config.richMediaSendEnabled === false ? {} : { backgroundSound: true as const }),
@@ -1578,12 +1585,89 @@ export class ArkmeService {
   async longArticleDetail(sourceRef: string, itemUid: string, signal?: AbortSignal): Promise<ArkmeLongArticleDetail> {
     return await this.chat.longArticleDetail(sourceRef, itemUid, signal)
   }
+  private async prepareLongArticle(input: { title: string; textContent: string; textFormat?: 'plain' | 'markdown'; images?: import('./types.js').ArkmeLongArticleImage[] }, existing: ArkmeLongArticleDetail | undefined, signal?: AbortSignal) {
+    if (input.textFormat !== 'markdown' && (input.images?.length ?? 0) > 0) throw new ArkmePluginError('long-article-image-format', '图文长文必须使用 Markdown', false)
+    if (input.textFormat === 'markdown' && this.config.markdownLongArticlesEnabled !== true) throw new ArkmePluginError('markdown-send-disabled', 'Markdown 长文发送尚未开放', false, 403)
+    if (!input.title.trim() || input.title.trim().length > 100 || !input.textContent || input.textContent.length > 40000) throw new ArkmePluginError('long-article-invalid', '长文标题或正文为空、过长', false)
+    const images = input.images ?? []
+    const destinations = input.textFormat === 'markdown' ? longArticleImageDestinations(input.textContent) : []
+    const wanted = new Set(destinations.map(image => image.url))
+    const localRefs = [...new Set(images.flatMap(image => image.fileRef && wanted.has(`arkme-local:${image.fileRef}`) ? [image.fileRef] : []))]
+    const uploaded = localRefs.length ? await this.filesOwner().uploadLongArticleImages(localRefs, signal) : []
+    const resolved = images.map(image => image.fileRef && localRefs.includes(image.fileRef) ? { ...image, fileAssetUid: uploaded[localRefs.indexOf(image.fileRef)]!.fileAssetUid } : image)
+    const textContent = input.textFormat === 'markdown' ? resolveLongArticleContent(input.textContent, resolved) : input.textContent
+    const assets: import('./types.js').ArkmeUploadedAsset[] = []
+    const referenced = (input.textFormat === 'markdown' ? longArticleImageDestinations(textContent) : []).filter(node => node.url.startsWith('arkme-asset:')).map(node => node.url.slice('arkme-asset:'.length))
+    for (const uid of new Set(referenced)) {
+      const fresh = uploaded.find(asset => asset.fileAssetUid === uid)
+      const old = existing?.contentBlocks?.find(block => block.fileAssetUid === uid && block.kind === 'image')
+      if (fresh) assets.push(fresh)
+      else if (old) assets.push({ fileAssetUid: uid, fileName: old.fileName, mimeType: old.mimeType, size: old.size, fileKind: 1 })
+      else throw new ArkmePluginError('long-article-image-unbound', '图片不属于当前长文，请重新插入', false, 403)
+    }
+    const invalidAssets = assets.filter(asset => asset.size <= 0 || asset.size > LONG_ARTICLE_IMAGE_MAX_BYTES)
+    if (invalidAssets.length) throw new ArkmePluginError('long-article-image-too-large', `正文图片超过当前上限 ${LONG_ARTICLE_IMAGE_MAX_BYTES} 字节，请删除或替换`, false, 400, {
+      imageFailures: invalidAssets.map(asset => ({ fileAssetUid: asset.fileAssetUid, fileName: asset.fileName, phase: 'validation' })),
+    })
+    return { textContent, assets }
+  }
+  async publishLongArticle(sourceRef: string, input: import('./types.js').ArkmeLongArticlePublishInput, signal?: AbortSignal): Promise<ArkmeSourceSendResult> {
+    if (!/^[A-Za-z0-9._:-]{8,256}$/.test(input.recordUid) || !/^[A-Za-z0-9._:-]{8,256}$/.test(input.relationUid)) throw new ArkmePluginError('long-article-id-invalid', '长文提交标识无效', false)
+    const userId = (await this.runtime.requireSession()).userId
+    // Stable IDs survive editor retries and account-local drafts; reconcile before sending again.
+    let previous: ArkmeLongArticleDetail | undefined
+    try {
+      previous = await this.chat.longArticleDetail(sourceRef, input.recordUid, signal)
+      if (!previous.editable) throw new ArkmePluginError('long-article-id-conflict', '长文提交标识已占用', false, 409)
+    } catch (error) {
+      // Record owner returns HTTP 200 / code 40001 for multiple failures: match
+      // the precise not-found contract, never interpret arbitrary errors as absence.
+      if (!(error instanceof ArkmePluginError && error.code === 'arkme-code-40001' && error.message === 'record is not found')) throw error
+    }
+    const content = await this.prepareLongArticle(input, previous, signal)
+    const matches = (detail: ArkmeLongArticleDetail) => detail.editable && detail.title === input.title.trim()
+      && detail.textContent === (input.textFormat === 'markdown' ? content.textContent : content.textContent.trim())
+      && (detail.textFormat ?? 'plain') === (input.textFormat ?? 'plain')
+      && [...new Set((detail.contentBlocks ?? []).map(block => block.fileAssetUid).filter(Boolean))].sort().join(',') === [...new Set(content.assets.map(asset => asset.fileAssetUid))].sort().join(',')
+    if (previous) {
+      if (!matches(previous)) throw new ArkmePluginError('long-article-id-conflict', '此提交标识已发布不同内容，当前草稿已保留，请核对已发布长文', false, 409)
+      const source = await this.source.openSourceRef(sourceRef, userId)
+      if (source.kind === 'private_chat' || source.kind === 'group_chat') {
+        if (!Number.isSafeInteger(previous.sendAtMillis) || previous.sendAtMillis <= 0) throw new ArkmePluginError('long-article-outcome-unknown', '缺少原发送时间，草稿已保留，请核对会话', false, 409)
+        // Chat may have persisted Record before appending its relation. Reuse
+        // both IDs and the original attach time so the owner can finish or dedupe.
+        return await this.chat.sendSourceRich(sourceRef, { ...input, ...content, displayKind: 1 }, {
+          recordUid: input.recordUid, relationUid: input.relationUid, sendAtMillis: previous.sendAtMillis,
+          expectedUserId: userId, ...(signal ? { signal } : {}),
+        })
+      }
+      return await this.chat.confirmLongArticlePublication(sourceRef, input, userId, signal)
+    }
+    try {
+      return await this.chat.sendSourceRich(sourceRef, { ...input, ...content, displayKind: 1 }, { recordUid: input.recordUid, relationUid: input.relationUid, expectedUserId: userId, ...(signal ? { signal } : {}) })
+    } catch (error) {
+      if (error instanceof ArkmePluginError && error.writeOutcomeUnknown) {
+        try {
+          const confirmed = await this.chat.longArticleDetail(sourceRef, input.recordUid, signal)
+          if (matches(confirmed)) return await this.chat.confirmLongArticlePublication(sourceRef, input, userId, signal)
+        } catch { /* Retain the original uncertain outcome and durable draft. */ }
+      }
+      throw error
+    }
+  }
   async updateLongArticle(
     sourceRef: string,
     itemUid: string,
-    input: { title: string; textContent: string; version: number; editDurationMillis: number },
+    input: import('./types.js').ArkmeLongArticleUpdateInput,
   ): Promise<ArkmeLongArticleDetail> {
-    return await this.chat.updateLongArticle(sourceRef, itemUid, input)
+    const userId = (await this.runtime.requireSession()).userId
+    const existing = await this.chat.longArticleDetail(sourceRef, itemUid)
+    if (!existing.editable || existing.version !== input.version) throw new ArkmePluginError('long-article-update-invalid', '长文内容或版本无效，请刷新后重试', false, 409)
+    if (existing.textFormat === 'markdown' && this.config.markdownLongArticlesEnabled !== true) throw new ArkmePluginError('markdown-send-disabled', 'Markdown 长文编辑尚未开放', false, 403)
+    if ((existing.contentBlocks?.some(block => block.kind === 'image') || (existing.textFormat === 'markdown' && longArticleImageDestinations(existing.textContent).some(node => node.url.startsWith('arkme-asset:')))) && input.images === undefined) throw new ArkmePluginError('long-article-images-required', '请使用支持图文的长文编辑器，避免丢失图片', false, 409)
+    const content = await this.prepareLongArticle(input, existing)
+    if ((await this.runtime.requireSession()).userId !== userId) throw new ArkmePluginError('file-account-changed', '账号已切换', false, 403)
+    return await this.chat.updateLongArticle(sourceRef, itemUid, { ...input, ...content })
   }
 
   async getLongArticleDraft(sourceRef: string, itemUid?: string): Promise<ArkmeLongArticleDraft | undefined> {

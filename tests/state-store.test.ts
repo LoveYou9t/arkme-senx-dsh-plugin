@@ -717,3 +717,16 @@ describe('ArkmeStateStore', () => {
     expect(jobs.some(item => item.jobId === 'terminal-0')).toBe(false)
   })
 })
+
+it('retains long article image refs, document and stable submit IDs after restart', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'arkme-article-draft-'))
+  const store = new ArkmeStateStore(root)
+  const draft = {sourceRef:'source',baseVersion:3,title:'article',textContent:'![x](arkme-local:arkme-file-v1.a)',textFormat:'markdown' as const,images:[{fileRef:'arkme-file-v1.a'}],document:{type:'doc',content:[]},recordUid:'record-id',relationUid:'relation-id',durationMillis:10,updatedAtMillis:20}
+  await store.putLongArticleDraft(42, draft)
+  const restarted = new ArkmeStateStore(root)
+  expect(await restarted.getLongArticleDraft(42,'source')).toEqual(draft)
+  expect(await restarted.recordReeditFileRefs(42)).toContain('arkme-file-v1.a')
+  expect(await restarted.recordReeditFileRefs(43)).toEqual([])
+  await restarted.removeLongArticleDraft(42,'source')
+  expect(await restarted.recordReeditFileRefs(42)).toEqual([])
+})
