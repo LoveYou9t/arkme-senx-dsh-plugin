@@ -5,8 +5,8 @@
 ## 上线与回滚
 
 1. 先发布 Record 和 Chat 合同：Record 支持 `display_kind=1` 的 Markdown 图片长文以及文件能力接口；Chat 支持图文转发、复制链接快照。
-2. 发布当前 `jotmo_frontend` 的 Markdown 图片阅读版本。
-3. 最后将插件配置 `markdownLongArticlesEnabled` 设为 `true`。默认 `false`，未开启时保留已有图文的读取能力及 Markdown 草稿。
+2. 发布当前手机客户端的 Markdown 图片阅读版本。
+3. 确认插件配置 `markdownLongArticlesEnabled` 为 `true`（当前默认值）。需要延后开放写入时显式设为 `false`，仍保留已有图文的读取能力及 Markdown 草稿。
 
 回滚时关闭上述插件写入开关，保留服务端和客户端图文读取。服务端会拒绝对图文长文省略 Markdown 内容快照的旧式更新。
 
