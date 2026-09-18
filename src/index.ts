@@ -124,6 +124,7 @@ export interface Config {
   chatMemberJoinEventsEnabled: boolean
   richMediaRenderEnabled: boolean
   markdownQuickNotesEnabled: boolean
+  markdownLongArticlesEnabled?: boolean
   richMediaSendEnabled: boolean
   maxUploadBytes: number
   stateDirectory: string
@@ -189,6 +190,7 @@ export const Config: Schema<Config> = Schema.object({
   updateAllowLocalInstall: Schema.boolean().default(true),
   richMediaRenderEnabled: Schema.boolean().default(true),
   markdownQuickNotesEnabled: Schema.boolean().default(false),
+  markdownLongArticlesEnabled: Schema.boolean().default(true),
   richMediaSendEnabled: Schema.boolean().default(true),
   maxUploadBytes: Schema.number().min(1024).max(1024 * 1024 * 1024).default(100 * 1024 * 1024),
   openclawProfile: Schema.string().default('dev'),
@@ -667,6 +669,7 @@ export function apply(ctx: Context, config: Config): void {
   }
   const uploadHandler = createArkmeUploadHandler(service, richMediaOptions)
   const stageHandler = createArkmeUploadHandler(service, richMediaOptions, 'stage')
+  const longArticleStageHandler = createArkmeUploadHandler(service, richMediaOptions, 'long-article-stage')
   const localFileHandler = createArkmeLocalFileHandler(service, richMediaOptions)
   const recordingImportHandler = createArkmeRecordingImportHandler(service, {
     expectedPort: ctx.webServer.port,
@@ -856,6 +859,7 @@ export function apply(ctx: Context, config: Config): void {
     handler: uploadHandler,
   }), 'dsh-arkme: rich content upload route')
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: `${config.routePath}/files/stage`, handler: stageHandler }), 'dsh-arkme: local file preparation')
+  ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: `${config.routePath}/files/long-article-stage`, handler: longArticleStageHandler }), 'dsh-arkme: long article image preparation')
   ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: `${config.routePath}/files/local`, handler: localFileHandler }), 'dsh-arkme: authorized local file bytes')
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',

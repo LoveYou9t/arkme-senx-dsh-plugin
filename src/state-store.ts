@@ -115,6 +115,12 @@ function normalizedLongArticleDraft(value: unknown): ArkmeLongArticleDraft | und
   return {
     sourceRef: source.sourceRef,
     ...(itemUid === undefined ? {} : { itemUid }),
+    ...(typeof source.baseVersion === 'number' && Number.isSafeInteger(source.baseVersion) && source.baseVersion > 0 ? { baseVersion: source.baseVersion } : {}),
+    ...(source.textFormat === 'markdown' || source.textFormat === 'plain' ? { textFormat: source.textFormat } : {}),
+    ...(source.document && typeof source.document === 'object' && !Array.isArray(source.document) ? { document: source.document as Record<string, unknown> } : {}),
+    ...(Array.isArray(source.images) ? { images: source.images.filter((x): x is import('./types.js').ArkmeLongArticleImage => x && typeof x === 'object' && (typeof x.fileRef === 'string' || typeof x.fileAssetUid === 'string')) } : {}),
+    ...(typeof source.recordUid === 'string' ? { recordUid: source.recordUid } : {}),
+    ...(typeof source.relationUid === 'string' ? { relationUid: source.relationUid } : {}),
     title: source.title.slice(0, 100),
     textContent: source.textContent.slice(0, 40000),
     durationMillis: typeof source.durationMillis === 'number' && Number.isFinite(source.durationMillis)
@@ -156,6 +162,12 @@ function normalizedRecordReeditDraft(value: unknown): ArkmeRecordReeditDraft | u
     sourceIdentityKey,
     lastSourceRef,
     itemUid,
+    ...(typeof source.baseVersion === 'number' && Number.isSafeInteger(source.baseVersion) && source.baseVersion > 0 ? { baseVersion: source.baseVersion } : {}),
+    ...(source.textFormat === 'markdown' || source.textFormat === 'plain' ? { textFormat: source.textFormat } : {}),
+    ...(source.document && typeof source.document === 'object' && !Array.isArray(source.document) ? { document: source.document as Record<string, unknown> } : {}),
+    ...(Array.isArray(source.images) ? { images: source.images.filter((x): x is import('./types.js').ArkmeLongArticleImage => x && typeof x === 'object' && (typeof x.fileRef === 'string' || typeof x.fileAssetUid === 'string')) } : {}),
+    ...(typeof source.recordUid === 'string' ? { recordUid: source.recordUid } : {}),
+    ...(typeof source.relationUid === 'string' ? { relationUid: source.relationUid } : {}),
     title: source.title.slice(0, 100),
     textContent: source.textContent.slice(0, 40000),
     ...(mentions === undefined ? {} : { mentions }),
@@ -472,7 +484,7 @@ export class ArkmeStateStore {
   async recordReeditFileRefs(userId: number): Promise<string[]> {
     return await this.read(state => [...Object.values(recordReeditDraftEntries(state, userId)),
       ...Object.values(recordReeditSubmissionEntries(state, userId)).map(job => job.draft)]
-      .flatMap(draft => draft.attachments?.flatMap(item => item.fileRef === undefined ? [] : [item.fileRef]) ?? []))
+      .flatMap(draft => draft.attachments?.flatMap(item => item.fileRef === undefined ? [] : [item.fileRef]) ?? []).concat(Object.values(state.longArticleDraftsByUser[String(userId)] ?? {}).flatMap(draft => draft.images?.flatMap(image => image.fileRef ? [image.fileRef] : []) ?? [])))
   }
 
   async listRecordReeditSubmissions(userId: number): Promise<ArkmeRecordReeditSubmission[]> {

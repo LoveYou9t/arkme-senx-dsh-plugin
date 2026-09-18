@@ -97,7 +97,7 @@ function fileActionStateStyle(disabled: boolean, busy = false): CSSProperties {
   }
 }
 
-export function useArkmeFileActionNotice() {
+export function useArkmeFileActionNotice(durationMs = 800) {
   const [notice, setNotice] = useState<ArkmeFileActionNotice>()
   const timer = useRef<ReturnType<typeof setTimeout>>()
   const clearNotice = useCallback(() => {
@@ -117,9 +117,9 @@ export function useArkmeFileActionNotice() {
       timer.current = setTimeout(() => {
         timer.current = undefined
         setNotice(undefined)
-      }, 800)
+      }, durationMs)
     }
-  }, [])
+  }, [durationMs])
   useEffect(() => () => {
     if (timer.current !== undefined) clearTimeout(timer.current)
   }, [])

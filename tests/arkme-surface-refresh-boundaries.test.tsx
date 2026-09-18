@@ -280,7 +280,10 @@ describe('Arkme surface refresh boundaries', () => {
     expect(renderer.root.findAllByProps({ 'data-arkme-message-item-uid': 'new-message' })).toHaveLength(1)
     await act(async () => { renderer!.root.findByProps({ 'aria-label': '关闭预览' }).props.onClick() })
     await act(async () => {
-      renderer!.root.findByProps({ 'data-arkme-message-direction': 'self' }).props.onClick({ target: new TestElement(), currentTarget: new TestElement() })
+      const target = new TestElement()
+      const currentTarget = new TestElement()
+      currentTarget.contains = () => true
+      renderer!.root.findByProps({ 'data-arkme-message-direction': 'self' }).props.onClick({ target, currentTarget })
       await Promise.resolve()
     })
     const detail = renderer.root.findByType(ArkmeTimelineDetailDrawer)

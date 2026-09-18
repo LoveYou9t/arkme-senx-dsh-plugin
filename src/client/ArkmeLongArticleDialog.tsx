@@ -1,7 +1,13 @@
-import { ArkmeMarkdownBody } from './ArkmeMarkdownBody.js'
+import { ArkmeFileActionToast, useArkmeFileActionNotice } from './ArkmeFileViewer.js'
+import { ArkmeLongArticleBody, articleImageUrl } from './ArkmeLongArticleBody.js'
+import { ArkmeLongArticleEditor, type ArkmeArticleEditorValue } from './ArkmeLongArticleEditor.js'
+import { arkmePlainEditorDocument } from './markdown-editor.js'
+import { arkmeMarkdownPlainText } from '../markdown.js'
+import { arkmeAuthStore } from './auth-store.js'
+import type { JSONContent } from '@tiptap/core'
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import type { ArkmeLongArticleDetail, ArkmeLongArticleDraft, ArkmeSourceSendResult, ArkmeTimelineItem } from '../types.js'
-import { callArkme } from './api.js'
+import type { ArkmeLongArticleDetail, ArkmeLongArticleDraft, ArkmeSourceSendResult, ArkmeTimelineItem, ArkmeProviderCapabilities, ArkmeLongArticleImage } from '../types.js'
+import { ArkmeClientError, callArkme } from './api.js'
 import { ArkmeRichText } from './ArkmeRichText.js'
 
 const MAX_TITLE_LENGTH = 100
@@ -68,7 +74,7 @@ export function ArkmeLongArticleSnapshotDialog({ item, onClose }: { item: ArkmeT
       </div>
       <div style={styles.body}>
         {item.textFormat === 'markdown'
-          ? <ArkmeMarkdownBody text={item.textContent} textStyle={{ fontSize: styles.bodyRead?.fontSize, lineHeight: styles.bodyRead?.lineHeight }} />
+          ? <ArkmeLongArticleBody text={item.textContent} blocks={item.contentBlocks} textStyle={{ fontSize: styles.bodyRead?.fontSize, lineHeight: styles.bodyRead?.lineHeight }} />
           : <p style={styles.bodyRead}><ArkmeRichText text={item.textContent} linkLabelMode="raw" /></p>}
       </div>
     </article>
@@ -76,9 +82,11 @@ export function ArkmeLongArticleSnapshotDialog({ item, onClose }: { item: ArkmeT
 }
 
 export function ArkmeLongArticleDialog({ sourceRef, item, onClose, onCreated, onUpdated }: ArkmeLongArticleDialogProps) {
+  const { notice: imageNotice, showNotice: showImageNotice } = useArkmeFileActionNotice(5000)
+  const itemUid = item?.itemUid
   const creating = item === undefined
   const [detail, setDetail] = useState<ArkmeLongArticleDetail>()
-  const [loading, setLoading] = useState(!creating)
+  const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(creating)
   const [title, setTitle] = useState('')
   const [textContent, setTextContent] = useState('')
@@ -87,6 +95,25 @@ export function ArkmeLongArticleDialog({ sourceRef, item, onClose, onCreated, on
   const [clockMillis, setClockMillis] = useState(Date.now())
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  const [failedReferences, setFailedReferences] = useState<string[]>([])
+  const [markdownEnabled, setMarkdownEnabled] = useState(false)
+  const [capabilityReady, setCapabilityReady] = useState(false)
+  const [capabilityEpoch, setCapabilityEpoch] = useState(0)
+  const [draftFormat, setDraftFormat] = useState<'plain' | 'markdown'>('plain')
+  const [preparingImages, setPreparingImages] = useState(false)
+  const [initialDocument, setInitialDocument] = useState<JSONContent>()
+  const [editorEpoch, setEditorEpoch] = useState(0)
+  const [article, setArticle] = useState<ArkmeArticleEditorValue>()
+  const articleRef = useRef(article); articleRef.current = article
+  const imagesRef = useRef<ArkmeLongArticleImage[]>([])
+  const baseVersionRef = useRef<number>()
+  const ids = useRef<{ recordUid: string; relationUid: string }>()
+  const getIds = () => ids.current ??= { recordUid: crypto.randomUUID(), relationUid: crypto.randomUUID() }
+  const [accountChanged, setAccountChanged] = useState(false)
+  const authAtOpen = useRef(arkmeAuthStore.getSnapshot().auth)
+  const [documentDirty, setDocumentDirty] = useState(false)
+  const documentDirtyRef = useRef(false)
+  const saving = useRef(Promise.resolve())
   const skipUnmountSaveRef = useRef(false)
   const originalRef = useRef({ title: '', textContent: '' })
   const titleRef = useRef(title)
@@ -103,36 +130,44 @@ export function ArkmeLongArticleDialog({ sourceRef, item, onClose, onCreated, on
   const displayedDurationMillis = creating
     ? editingDurationMillis
     : (detail?.recordDurationMillis ?? 0) + editingDurationMillis
-  const dirty = title !== originalRef.current.title || textContent !== originalRef.current.textContent
+  const dirty = documentDirty || title !== originalRef.current.title || textContent !== originalRef.current.textContent
 
   const draftParams = useMemo(() => ({
     sourceRef,
-    ...(item === undefined ? {} : { itemUid: item.itemUid }),
-  }), [item, sourceRef])
+    ...(itemUid === undefined ? {} : { itemUid }),
+  }), [itemUid, sourceRef])
 
   const saveDraft = useCallback(async () => {
+    if (accountChanged || skipUnmountSaveRef.current) return
     const running = startedAtRef.current > 0 ? Date.now() - startedAtRef.current : 0
-    await callArkme<void>('source.long-article.draft.put', {
+    const value = {
       ...draftParams,
       title: titleRef.current,
       textContent: textRef.current,
+      textFormat: articleRef.current ? 'markdown' as const : draftFormat,
+      ...(articleRef.current ? { document: articleRef.current.document, images: imagesRef.current } : {}),
+      ...(creating ? getIds() : { baseVersion: baseVersionRef.current }),
       durationMillis: durationBaseRef.current + Math.max(0, running),
-    })
-  }, [draftParams])
+    }
+    saving.current = saving.current.catch(() => {}).then(() => callArkme<void>('source.long-article.draft.put', value))
+    await saving.current
+  }, [draftParams, accountChanged, draftFormat, creating])
 
   const deleteDraft = useCallback(async () => {
+    await saving.current.catch(() => {})
     await callArkme<void>('source.long-article.draft.delete', draftParams)
   }, [draftParams])
 
   const loadDetail = useCallback(async () => {
-    if (item === undefined) return
+    if (itemUid === undefined) return
     setLoading(true)
     setError('')
     try {
       const value = await callArkme<ArkmeLongArticleDetail>('source.long-article.detail', {
-        sourceRef, itemUid: item.itemUid,
+        sourceRef, itemUid,
       })
       setDetail(value)
+      setDraftFormat(value.textFormat ?? 'plain')
       setTitle(value.title)
       setTextContent(value.textContent)
       originalRef.current = { title: value.title, textContent: value.textContent }
@@ -142,15 +177,33 @@ export function ArkmeLongArticleDialog({ sourceRef, item, onClose, onCreated, on
     } finally {
       setLoading(false)
     }
-  }, [item, sourceRef])
+  }, [itemUid, sourceRef])
 
+  useEffect(() => arkmeAuthStore.subscribe(() => {
+    const auth = arkmeAuthStore.getSnapshot().auth
+    if (authAtOpen.current?.status === 'authenticated' && (auth?.status !== 'authenticated' || auth.userId !== authAtOpen.current.userId || auth.environment !== authAtOpen.current.environment)) {
+      skipUnmountSaveRef.current = true
+      setAccountChanged(true)
+      setError('账号已切换，请关闭后重新打开长文')
+    }
+  }), [])
+  useEffect(() => {
+    let active = true
+    setCapabilityReady(false)
+    void callArkme<ArkmeProviderCapabilities>('provider.capabilities', {}).then(value => { if (active) setMarkdownEnabled(value?.features?.markdownLongArticles === true) }).catch(caught => { if (active) setError(errorMessage(caught)) }).finally(() => { if (active) setCapabilityReady(true) })
+    return () => { active = false }
+  }, [capabilityEpoch])
   useEffect(() => {
     if (!creating) { void loadDetail(); return }
     let active = true
     void callArkme<ArkmeLongArticleDraft | undefined>('source.long-article.draft.get', draftParams)
       .then(draft => {
-        if (!active || draft === undefined || (draft.title === '' && draft.textContent === '')) return
+        if (!active || draft === undefined || (draft.title === '' && draft.textContent === '' && !draft.document)) return
         if (window.confirm('发现未发布的长文草稿，是否继续编辑？')) {
+          setInitialDocument(draft.document ?? (draft.textFormat === 'markdown' ? undefined : arkmePlainEditorDocument(draft.textContent)))
+          setDraftFormat(draft.textFormat ?? (draft.images?.length ? 'markdown' : 'plain'))
+          imagesRef.current = draft.images ?? []
+          if (draft.recordUid && draft.relationUid) ids.current = { recordUid: draft.recordUid, relationUid: draft.relationUid }
           setTitle(draft.title)
           setTextContent(draft.textContent)
           setDurationBaseMillis(draft.durationMillis)
@@ -160,7 +213,8 @@ export function ArkmeLongArticleDialog({ sourceRef, item, onClose, onCreated, on
           void deleteDraft()
         }
       })
-      .catch(() => undefined)
+      .catch(caught => { if (active) setError(errorMessage(caught)) })
+      .finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [creating, deleteDraft, draftParams, loadDetail])
 
@@ -173,16 +227,22 @@ export function ArkmeLongArticleDialog({ sourceRef, item, onClose, onCreated, on
   useEffect(() => {
     if (!editing) return
     const timer = window.setInterval(() => {
-      if (titleRef.current !== originalRef.current.title || textRef.current !== originalRef.current.textContent) {
+      if (documentDirtyRef.current || titleRef.current !== originalRef.current.title || textRef.current !== originalRef.current.textContent) {
         void saveDraft().catch(() => undefined)
       }
     }, 10000)
     return () => { window.clearInterval(timer) }
   }, [editing, saveDraft])
 
+  useEffect(() => {
+    if (!editing || !documentDirty || loading || accountChanged) return
+    const timer = setTimeout(() => { void saveDraft().catch(caught => setError(errorMessage(caught))) }, 300)
+    return () => { clearTimeout(timer) }
+  }, [article, title, editing, documentDirty, loading, accountChanged, saveDraft])
+
   useEffect(() => () => {
     if (skipUnmountSaveRef.current) return
-    if (titleRef.current === originalRef.current.title && textRef.current === originalRef.current.textContent) return
+    if (!documentDirtyRef.current && titleRef.current === originalRef.current.title && textRef.current === originalRef.current.textContent) return
     void saveDraft().catch(() => undefined)
   }, [saveDraft])
 
@@ -190,9 +250,8 @@ export function ArkmeLongArticleDialog({ sourceRef, item, onClose, onCreated, on
     if (submitting) return
     if (editing && dirty) {
       const keep = window.confirm('保留这篇长文的未发布修改吗？\n确定：保留草稿；取消：放弃修改。')
-      skipUnmountSaveRef.current = true
-      if (keep) void saveDraft().finally(onClose)
-      else void deleteDraft().finally(onClose)
+      if (keep) void saveDraft().then(() => { skipUnmountSaveRef.current = true; onClose() }).catch(caught => setError(errorMessage(caught)))
+      else { skipUnmountSaveRef.current = true; void deleteDraft().then(onClose).catch(caught => { skipUnmountSaveRef.current = false; setError(errorMessage(caught)) }) }
       return
     }
     skipUnmountSaveRef.current = true
@@ -207,20 +266,33 @@ export function ArkmeLongArticleDialog({ sourceRef, item, onClose, onCreated, on
 
   const beginEditing = async () => {
     if (detail === undefined || !detail.editable) return
+    let nextVersion = detail.version
     let nextTitle = detail.title
     let nextText = detail.textContent
     let nextDuration = detail.editDurationMillis
+    let document: JSONContent | undefined = detail.textFormat === 'markdown' ? undefined : arkmePlainEditorDocument(detail.textContent)
+    let images: ArkmeLongArticleImage[] = (detail.contentBlocks ?? []).flatMap(block => block.kind === 'image' && block.fileAssetUid ? [{ fileAssetUid: block.fileAssetUid }] : [])
     try {
       const draft = await callArkme<ArkmeLongArticleDraft | undefined>('source.long-article.draft.get', draftParams)
-      if (draft !== undefined && (draft.title !== detail.title || draft.textContent !== detail.textContent)
+      if (draft !== undefined && (draft.title !== detail.title || draft.textContent !== detail.textContent || draft.document !== undefined)
         && window.confirm('发现这篇长文的未发布修改，是否恢复？')) {
+        nextVersion = draft.baseVersion ?? 0
         nextTitle = draft.title
         nextText = draft.textContent
+        document = draft.document ?? (draft.textFormat === 'markdown' ? undefined : arkmePlainEditorDocument(draft.textContent))
+        setDraftFormat(draft.textFormat ?? detail.textFormat ?? 'plain')
+        images = draft.images ?? images
         nextDuration = Math.max(detail.editDurationMillis, draft.durationMillis)
       }
     } catch {
       // Draft recovery is best effort; the server detail remains editable.
     }
+    baseVersionRef.current = nextVersion
+    setInitialDocument(document)
+    imagesRef.current = images
+    setArticle(undefined)
+    setEditorEpoch(value => value + 1)
+    setDocumentDirty(false); documentDirtyRef.current = false
     setTitle(nextTitle)
     setTextContent(nextText)
     setDurationBaseMillis(nextDuration)
@@ -229,41 +301,50 @@ export function ArkmeLongArticleDialog({ sourceRef, item, onClose, onCreated, on
     setClockMillis(Date.now())
     skipUnmountSaveRef.current = false
     setEditing(true)
-    setError('')
+    setError(nextVersion !== detail.version ? '此草稿基于旧版本，正文已有新修改；草稿已保留，请核对后重新编辑。' : '')
   }
 
   const publish = async () => {
+    if (loading || !capabilityReady || (draftFormat === 'markdown' && !markdownEnabled) || (markdownEnabled && !article)) return
+    if (!creating && baseVersionRef.current !== detail?.version) { setError('此草稿基于旧版本，正文已有新修改；草稿已保留，请核对后重新编辑。'); return }
     const normalizedTitle = title.trim()
-    const normalizedText = detail?.textFormat === 'markdown' ? textContent : textContent.trim()
+    const format = article ? 'markdown' : draftFormat
+    const normalizedText = format === 'markdown' ? textContent : textContent.trim()
+    if (accountChanged || preparingImages) return
+    if (article && (article.pendingImages || article.failedImages)) { setError('请等待图片准备完成，或重试、删除失败图片'); return }
     if (normalizedTitle === '') { setError('请输入标题'); return }
     if (normalizedText === '') { setError('请输入正文'); return }
     if (normalizedTitle.length > MAX_TITLE_LENGTH) { setError('标题最多100字'); return }
     if (normalizedText.length > MAX_CONTENT_LENGTH) { setError('正文最多40000字'); return }
     if (submitting) return
     setSubmitting(true)
+    setFailedReferences([])
     setError('')
     try {
       if (creating) {
-        const recordUid = crypto.randomUUID()
-        const result = await callArkme<ArkmeSourceSendResult>('source.send-rich', {
+        const submissionIds = getIds()
+        const result = await callArkme<ArkmeSourceSendResult>(article ? 'source.long-article.publish' : 'source.send-rich', {
           sourceRef,
           title: normalizedTitle,
           textContent: normalizedText,
           displayKind: 1,
           thinkingDurationMillis: editingDurationMillis,
           assets: [],
-          recordUid,
-          relationUid: crypto.randomUUID(),
+          ...submissionIds,
+          ...(article ? { textFormat: format, images: article.images, recordDurationMillis: editingDurationMillis } : {}),
         })
         skipUnmountSaveRef.current = true
-        await deleteDraft()
+        await deleteDraft().catch(() => {})
+        const confirmed = article ? await callArkme<ArkmeLongArticleDetail>('source.long-article.detail', { sourceRef, itemUid: result.itemUid }).catch(() => undefined) : undefined
         onCreated?.({
           itemUid: result.itemUid,
           senderName: '我',
           isMe: true,
           sendAtMillis: Date.now(),
           title: normalizedTitle,
-          textContent: normalizedText,
+          textContent: confirmed?.textContent ?? (article ? arkmeMarkdownPlainText(normalizedText) : normalizedText),
+          textFormat: format,
+          ...(confirmed?.contentBlocks ? { contentBlocks: confirmed.contentBlocks } : {}),
           status: result.status,
           templateKind: 8,
           displayKind: 1,
@@ -280,22 +361,26 @@ export function ArkmeLongArticleDialog({ sourceRef, item, onClose, onCreated, on
           itemUid: detail.itemUid,
           title: normalizedTitle,
           textContent: normalizedText,
-          version: detail.version,
+          ...(article ? { textFormat: format, images: article.images } : {}),
+          version: baseVersionRef.current,
           editDurationMillis: editingDurationMillis,
         })
         skipUnmountSaveRef.current = true
-        await deleteDraft()
+        await deleteDraft().catch(() => {})
         setDetail(updated)
         setTitle(updated.title)
         setTextContent(updated.textContent)
         setDurationBaseMillis(updated.editDurationMillis)
         setStartedAtMillis(0)
         setEditing(false)
+        setDocumentDirty(false); documentDirtyRef.current = false
+        setArticle(undefined)
         originalRef.current = { title: updated.title, textContent: updated.textContent }
         skipUnmountSaveRef.current = false
         onUpdated?.(updated)
       }
     } catch (caught) {
+      if (caught instanceof ArkmeClientError) setFailedReferences((caught.body.imageFailures ?? []).flatMap(failure => failure.fileRef ? [`arkme-local:${failure.fileRef}`] : failure.fileAssetUid ? [`arkme-asset:${failure.fileAssetUid}`] : []))
       setError(errorMessage(caught))
     } finally {
       setSubmitting(false)
@@ -307,9 +392,10 @@ export function ArkmeLongArticleDialog({ sourceRef, item, onClose, onCreated, on
   const staticDuration = detail?.thinkingDurationMillis
     ?? Math.max(0, (item?.recordDurationMillis ?? 0) + (item?.editDurationMillis ?? 0))
   const metaDuration = editing ? displayedDurationMillis : staticDuration
+  const wordCount = (article || detail?.textFormat === 'markdown') ? arkmeMarkdownPlainText(textValue).replace(/\[图片\]/g, '').length : textValue.length
   const sendAt = detail?.sendAtMillis ?? item?.sendAtMillis ?? 0
 
-  return <div style={styles.overlay} role="dialog" aria-modal="true" aria-label={creating ? '写长文' : '长文详情'} onMouseDown={event => { if (event.target === event.currentTarget) requestClose() }}>
+  return <div style={styles.overlay} role="dialog" aria-modal="true" aria-label={creating ? '写长文' : '长文详情'} onClick={event => { event.stopPropagation() }} onMouseDown={event => { if (event.target === event.currentTarget) requestClose() }}>
     <article style={styles.dialog} data-arkme-long-article-dialog={creating ? 'create' : editing ? 'edit' : 'detail'}>
       <header style={styles.header}>
         {editing
@@ -320,19 +406,36 @@ export function ArkmeLongArticleDialog({ sourceRef, item, onClose, onCreated, on
       <div style={styles.metaRow}>
         {!creating && sendAt > 0 && <span style={styles.meta}>▦ {formatDate(sendAt)}</span>}
         <span style={styles.meta}>◷ {formatDuration(metaDuration)}</span>
-        <span style={styles.meta}>▤ {String(textValue.length)}字</span>
+        <span style={styles.meta}>▤ {String(wordCount)}字</span>
         {editing
-          ? <button data-arkme-feedback="neutral" type="button" style={{ ...styles.action, opacity: submitting ? .55 : 1 }} disabled={submitting} onClick={() => { void publish() }}>➤ {submitting ? '发布中…' : '发布'}</button>
+          ? <button data-arkme-feedback="neutral" type="button" style={{ ...styles.action, opacity: submitting ? .55 : 1 }} disabled={loading || !capabilityReady || (draftFormat === 'markdown' && !markdownEnabled) || (markdownEnabled && !article) || submitting || accountChanged || preparingImages || Boolean(article?.pendingImages) || Boolean(article?.failedImages)} onClick={() => { void publish() }}>➤ {submitting ? '发布中…' : '发布'}</button>
           : detail?.editable === true && <button data-arkme-feedback="neutral" type="button" style={styles.action} onClick={() => { void beginEditing() }}>✎ 编辑</button>}
       </div>
       {error !== '' && <div style={styles.error} role="alert">{error}{!creating && detail === undefined && <button data-arkme-feedback="neutral" type="button" style={styles.retry} onClick={() => { void loadDetail() }}>重试</button>}</div>}
-      {loading
+      {loading || (editing && !capabilityReady)
         ? <div style={styles.state} role="status">正在加载长文…</div>
         : <div style={styles.body}>
-          {editing
-            ? <textarea autoFocus={creating} style={styles.bodyInput} value={textContent} maxLength={MAX_CONTENT_LENGTH} placeholder="请输入正文内容" aria-label="长文正文" disabled={submitting} onChange={event => { setTextContent(event.target.value) }} />
-            : detail?.textFormat === 'markdown' ? <ArkmeMarkdownBody text={textValue} textStyle={{ fontSize: styles.bodyRead?.fontSize, lineHeight: styles.bodyRead?.lineHeight }} /> : <p style={styles.bodyRead}><ArkmeRichText text={textValue} linkLabelMode="raw" /></p>}
+          {editing && draftFormat === 'markdown' && !markdownEnabled
+            ? <div role="status">Markdown 长文暂不可编辑，草稿已保留。<button type="button" onClick={() => { setCapabilityEpoch(value => value + 1) }}>重试</button></div>
+            : editing && markdownEnabled && !accountChanged
+            ? <ArkmeLongArticleEditor key={editorEpoch} initialSource={textContent} initialDocument={initialDocument} failedReferences={failedReferences} disabled={submitting} expectedUserId={authAtOpen.current?.userId}
+                resolveImage={ref => { const block = detail?.contentBlocks?.find(value => value.kind === 'image' && `arkme-asset:${value.fileAssetUid}` === ref); return block ? articleImageUrl(block) : undefined }}
+                onError={message => { showImageNotice({ kind: 'error', message }) }} onPreparingChange={setPreparingImages} onChange={value => {
+                  const previous = articleRef.current
+                  if (!previous && textRef.current === originalRef.current.textContent) originalRef.current.textContent = value.source
+                  articleRef.current = value
+                  setDraftFormat('markdown')
+                  textRef.current = value.source
+                  const imageSet: ArkmeLongArticleImage[] = [...imagesRef.current, ...value.images, ...value.retainedFileRefs.map(fileRef => ({ fileRef }))]
+                  imagesRef.current = imageSet.filter((image, index, all) => all.findIndex(other => other.fileRef === image.fileRef && other.fileAssetUid === image.fileAssetUid) === index)
+                  setArticle(value); setTextContent(value.source)
+                  if (previous && JSON.stringify(previous.document) !== JSON.stringify(value.document)) { setDocumentDirty(true); documentDirtyRef.current = true }
+                }} />
+            : editing
+            ? <textarea autoFocus={creating} style={styles.bodyInput} value={textContent} maxLength={MAX_CONTENT_LENGTH} placeholder="请输入正文内容" aria-label="长文正文" disabled={submitting || accountChanged} onChange={event => { setTextContent(event.target.value) }} />
+            : detail?.textFormat === 'markdown' ? <ArkmeLongArticleBody text={textValue} blocks={detail?.contentBlocks} textStyle={{ fontSize: styles.bodyRead?.fontSize, lineHeight: styles.bodyRead?.lineHeight }} /> : <p style={styles.bodyRead}><ArkmeRichText text={textValue} linkLabelMode="raw" /></p>}
         </div>}
     </article>
+    <ArkmeFileActionToast notice={imageNotice} style={{ position: 'fixed', left: 24, right: 24, bottom: '12vh', zIndex: 1201 }} />
   </div>
 }
