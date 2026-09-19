@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import { ArkmeFileActionToast, useArkmeFileActionNotice } from './ArkmeFileViewer.js'
 import { ArkmeLongArticleBody, articleImageUrl } from './ArkmeLongArticleBody.js'
 import { ArkmeLongArticleEditor, type ArkmeArticleEditorValue } from './ArkmeLongArticleEditor.js'
@@ -33,7 +34,7 @@ const styles: Record<string, CSSProperties> = {
 
 function formatDuration(durationMillis: number): string {
   const seconds = Math.max(0, Math.floor(durationMillis / 1000))
-  return seconds >= 60 ? `${String(Math.floor(seconds / 60))}分${String(seconds % 60)}秒` : `${String(seconds)}秒`
+  return seconds >= 60 ? tr("{v0}分{v1}秒", { v0: String(Math.floor(seconds / 60)), v1: String(seconds % 60) }) : tr("{v0}秒", { v0: String(seconds) })
 }
 
 function formatDate(value: number): string {
@@ -60,20 +61,21 @@ export interface ArkmeLongArticleDialogProps {
 
 /** Forwarded content is a read-only snapshot, not an editable source record. */
 export function ArkmeLongArticleSnapshotDialog({ item, onClose }: { item: ArkmeTimelineItem; onClose: () => void }) {
+  useArkmeLocale()
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') { event.stopPropagation(); onClose() } }
     window.addEventListener('keydown', onKeyDown, true)
     return () => { window.removeEventListener('keydown', onKeyDown, true) }
   }, [onClose])
-  return <div style={styles.overlay} role="dialog" aria-modal="true" aria-label="转发长文详情" onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
+  return <div style={styles.overlay} role="dialog" aria-modal="true" aria-label={tr("转发长文详情")} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
     <article style={styles.dialog} data-arkme-long-article-dialog="snapshot">
       <header style={styles.header}>
         <h2 style={styles.titleRead}><ArkmeRichText text={item.title || '无标题长文'} presentation="preview" /></h2>
-        <button data-arkme-feedback="neutral" autoFocus type="button" style={styles.close} aria-label="关闭长文" onClick={onClose}>×</button>
+        <button data-arkme-feedback="neutral" autoFocus type="button" style={styles.close} aria-label={tr("关闭长文")} onClick={onClose}>×</button>
       </header>
       <div style={styles.metaRow}>
         {item.sendAtMillis > 0 && <span style={styles.meta}>▦ {formatDate(item.sendAtMillis)}</span>}
-        <span style={styles.meta}>▤ {String(item.textContent.length)}字</span>
+        <span style={styles.meta}>▤ {String(item.textContent.length)}{tr("字")}</span>
       </div>
       <div style={styles.body}>
         {item.textFormat === 'markdown'
@@ -85,6 +87,7 @@ export function ArkmeLongArticleSnapshotDialog({ item, onClose }: { item: ArkmeT
 }
 
 export function ArkmeLongArticleDialog({ sourceRef, item, overlayZIndex, onClose, onCreated, onUpdated, onPrepared }: ArkmeLongArticleDialogProps) {
+  useArkmeLocale()
   const { notice: imageNotice, showNotice: showImageNotice } = useArkmeFileActionNotice(5000)
   const messageActionRef = useRef(item?.messageActionRef)
   messageActionRef.current = item?.messageActionRef
@@ -418,24 +421,24 @@ export function ArkmeLongArticleDialog({ sourceRef, item, overlayZIndex, onClose
     <article style={styles.dialog} data-arkme-long-article-dialog={creating ? 'create' : editing ? 'edit' : 'detail'}>
       <header style={styles.header}>
         {editing
-          ? <input autoFocus style={styles.titleInput} value={title} maxLength={MAX_TITLE_LENGTH} placeholder="请输入标题" aria-label="长文标题" disabled={submitting} onChange={event => { setTitle(event.target.value) }} />
+          ? <input autoFocus style={styles.titleInput} value={title} maxLength={MAX_TITLE_LENGTH} placeholder={tr("请输入标题")} aria-label={tr("长文标题")} disabled={submitting} onChange={event => { setTitle(event.target.value) }} />
           : <h2 style={styles.titleRead}><ArkmeRichText text={titleValue || '无标题长文'} presentation="preview" /></h2>}
-        <button data-arkme-feedback="neutral" type="button" style={styles.close} aria-label="关闭长文" disabled={submitting} onClick={requestClose}>×</button>
+        <button data-arkme-feedback="neutral" type="button" style={styles.close} aria-label={tr("关闭长文")} disabled={submitting} onClick={requestClose}>×</button>
       </header>
       <div style={styles.metaRow}>
         {!creating && sendAt > 0 && <span style={styles.meta}>▦ {formatDate(sendAt)}</span>}
         <span style={styles.meta}>◷ {formatDuration(metaDuration)}</span>
-        <span style={styles.meta}>▤ {String(wordCount)}字</span>
+        <span style={styles.meta}>▤ {String(wordCount)}{tr("字")}</span>
         {editing
-          ? <button data-arkme-feedback="neutral" type="button" style={{ ...styles.action, opacity: submitting ? .55 : 1 }} disabled={loading || !capabilityReady || (draftFormat === 'markdown' && !markdownEnabled) || (markdownEnabled && !article) || submitting || accountChanged || preparingImages || Boolean(article?.pendingImages) || Boolean(article?.failedImages)} onClick={() => { void publish() }}>➤ {creating && onPrepared ? (submitting ? '正在添加…' : '添加到待发送') : (submitting ? '发布中…' : '发布')}</button>
-          : detail?.editable === true && <button data-arkme-feedback="neutral" type="button" style={styles.action} onClick={() => { void beginEditing() }}>✎ 编辑</button>}
+          ? <button data-arkme-feedback="neutral" type="button" style={{ ...styles.action, opacity: submitting ? .55 : 1 }} disabled={loading || !capabilityReady || (draftFormat === 'markdown' && !markdownEnabled) || (markdownEnabled && !article) || submitting || accountChanged || preparingImages || Boolean(article?.pendingImages) || Boolean(article?.failedImages)} onClick={() => { void publish() }}>➤ {creating && onPrepared ? (submitting ? '正在添加…' : '添加到待发送') : (submitting ? '发布中…' : tr("发布"))}</button>
+          : detail?.editable === true && <button data-arkme-feedback="neutral" type="button" style={styles.action} onClick={() => { void beginEditing() }}>{tr("✎ 编辑")}</button>}
       </div>
-      {error !== '' && <div style={styles.error} role="alert">{error}{!creating && detail === undefined && <button data-arkme-feedback="neutral" type="button" style={styles.retry} onClick={() => { void loadDetail() }}>重试</button>}</div>}
+      {error !== '' && <div style={styles.error} role="alert">{error}{!creating && detail === undefined && <button data-arkme-feedback="neutral" type="button" style={styles.retry} onClick={() => { void loadDetail() }}>{tr("重试")}</button>}</div>}
       {loading || (editing && !capabilityReady)
-        ? <div style={styles.state} role="status">正在加载长文…</div>
+        ? <div style={styles.state} role="status">{tr("正在加载长文…")}</div>
         : <div style={styles.body}>
           {editing && draftFormat === 'markdown' && !markdownEnabled
-            ? <div role="status">Markdown 长文暂不可编辑，草稿已保留。<button type="button" onClick={() => { setCapabilityEpoch(value => value + 1) }}>重试</button></div>
+            ? <div role="status">{tr("Markdown 长文暂不可编辑，草稿已保留。")}<button type="button" onClick={() => { setCapabilityEpoch(value => value + 1) }}>{tr("重试")}</button></div>
             : editing && markdownEnabled && !accountChanged
             ? <ArkmeLongArticleEditor key={editorEpoch} initialSource={textContent} initialDocument={initialDocument} failedReferences={failedReferences} disabled={submitting} expectedUserId={authAtOpen.current?.userId}
                 resolveImage={ref => { const block = detail?.contentBlocks?.find(value => value.kind === 'image' && `arkme-asset:${value.fileAssetUid}` === ref); return block ? articleImageUrl(block) : undefined }}
@@ -451,7 +454,7 @@ export function ArkmeLongArticleDialog({ sourceRef, item, overlayZIndex, onClose
                   if (previous && JSON.stringify(previous.document) !== JSON.stringify(value.document)) { setDocumentDirty(true); documentDirtyRef.current = true }
                 }} />
             : editing
-            ? <textarea autoFocus={creating} style={styles.bodyInput} value={textContent} maxLength={MAX_CONTENT_LENGTH} placeholder="请输入正文内容" aria-label="长文正文" disabled={submitting || accountChanged} onChange={event => { setTextContent(event.target.value) }} />
+            ? <textarea autoFocus={creating} style={styles.bodyInput} value={textContent} maxLength={MAX_CONTENT_LENGTH} placeholder={tr("请输入正文内容")} aria-label={tr("长文正文")} disabled={submitting || accountChanged} onChange={event => { setTextContent(event.target.value) }} />
             : readFormat === 'markdown' ? <ArkmeLongArticleBody text={textValue} blocks={readBlocks} textStyle={{ fontSize: styles.bodyRead?.fontSize, lineHeight: styles.bodyRead?.lineHeight }} /> : <p style={styles.bodyRead}><ArkmeRichText text={textValue} linkLabelMode="raw" /></p>}
         </div>}
     </article>

@@ -107,7 +107,7 @@ describe('ArkmeRecordingSurface layout', () => {
     const source = await readFile(new URL('../src/client/ArkmeRecordingSurface.tsx', import.meta.url), 'utf8')
 
     expect(source).not.toContain('calendarExpanded')
-    expect(source).toContain('>回到今日</button>')
+    expect(source).toContain('{tr("回到今日")}</button>')
     expect(source).toContain("const canJumpToday = dateKey(selectedDate) !== dateKey(today)")
     expect(source).toContain('disabled={future}')
   })

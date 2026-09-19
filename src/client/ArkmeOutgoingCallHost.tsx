@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import { useCallback, useEffect, useRef, useSyncExternalStore, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import type { ArkmeClientConfig } from '../types.js'
@@ -32,6 +33,7 @@ const retainedOverlayStyle: CSSProperties = {
 const frameStyle: CSSProperties = { width: '100%', height: '100%', display: 'block', border: 0, background: 'transparent' }
 
 export function ArkmeOutgoingCallHost() {
+  useArkmeLocale()
   const runtimeRef = useRef<OutgoingCallRuntime>()
   if (runtimeRef.current === undefined) {
     runtimeRef.current = new OutgoingCallRuntime({ loadAvatar: imageRef => arkmeAvatarImages.load(imageRef) })
@@ -76,7 +78,7 @@ export function ArkmeOutgoingCallHost() {
   const overlay = retainedFrame ? retainedOverlayStyle : compact ? compactOverlayStyle : overlayStyle
   const sectionProps = retainedFrame
     ? { 'aria-hidden': true }
-    : { role: 'dialog', 'aria-modal': !compact, 'aria-label': `与${snapshot.displayName}通话` }
+    : { role: 'dialog', 'aria-modal': !compact, 'aria-label': tr("与{v0}通话", { v0: snapshot.displayName }) }
 
   return createPortal(<div
     style={overlay}
@@ -91,13 +93,13 @@ export function ArkmeOutgoingCallHost() {
           type="button" onClick={() => { runtime.cancel() }} style={{
             height: 36, padding: '0 18px', border: 0, borderRadius: 18, background: '#fff', color: '#17191c', cursor: 'pointer',
           }}
-        >关闭</button></div>
+        >{tr("关闭")}</button></div>
       </div> : <iframe
         key={snapshot.callRequestId}
         ref={attachCallFrame}
         src={callFrameUrl}
         name={JSON.stringify({ callRequestId: snapshot.callRequestId })}
-        title={`与${snapshot.displayName}通话`}
+        title={tr("与{v0}通话", { v0: snapshot.displayName })}
         allow="camera; microphone; autoplay"
         sandbox="allow-scripts allow-same-origin"
         referrerPolicy="no-referrer"

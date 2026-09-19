@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import { ArkmeActionMenu } from './ArkmeDshMenu.js'
 import { arkmeTheme } from './arkme-theme.js'
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ChangeEvent, type MouseEvent as ReactMouseEvent } from 'react'
@@ -203,6 +204,7 @@ function EmojiGrid({ emojis, layout = 'compact', onSelect }: {
   layout?: 'compact' | 'default'
   onSelect(emoji: ArkmeEmoji): void
 }) {
+  useArkmeLocale()
   const [hoveredId, setHoveredId] = useState('')
   return <div
     data-arkme-emoji-grid={layout}
@@ -257,6 +259,7 @@ export type ArkmeEmojiPickerProps = ArkmeEmojiPickerBaseProps & ({
 })
 
 export function ArkmeEmojiPicker({ disabled, mode = 'all', accountKey, scopeKey, sourceRef, getCaretGeometry, getEditorGeometry, onBeforeToggle, onSelect, onUploadSticker, onStickerSent, onError }: ArkmeEmojiPickerProps) {
+  useArkmeLocale()
   const hostRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLElement>(null)
   const stickerInputRef = useRef<HTMLInputElement>(null)
@@ -592,7 +595,7 @@ export function ArkmeEmojiPicker({ disabled, mode = 'all', accountKey, scopeKey,
   return <div ref={hostRef} style={styles.host} data-arkme-emoji-picker>
     <ArkmeComposerToolButton
       disabled={disabled}
-      aria-label="选择表情"
+      aria-label={tr("选择表情")}
       aria-haspopup="dialog"
       aria-expanded={open}
       data-arkme-composer-tool="emoji"
@@ -609,44 +612,42 @@ export function ArkmeEmojiPicker({ disabled, mode = 'all', accountKey, scopeKey,
         }}
         data-arkme-emoji-panel-shell="true"
         data-placement={panelGeometry?.placement ?? 'above'}
-      ><section ref={panelRef} role="dialog" aria-label="表情选择器" style={styles.panel} data-arkme-emoji-panel>
+      ><section ref={panelRef} role="dialog" aria-label={tr("表情选择器")} style={styles.panel} data-arkme-emoji-panel>
       {mode === 'text' || tab === 'emoji' ? <div style={styles.body}>
-      {recentSaveError !== undefined && <div role="alert" style={styles.title}>最近表情保存未确认
-        <button data-arkme-feedback="neutral" type="button" aria-label="重试保存最近表情" style={styles.retryButton} onClick={() => { recordRecent(recentSaveError) }}>重试保存</button>
+      {recentSaveError !== undefined && <div role="alert" style={styles.title}>{tr("最近表情保存未确认")}<button data-arkme-feedback="neutral" type="button" aria-label={tr("重试保存最近表情")} style={styles.retryButton} onClick={() => { recordRecent(recentSaveError) }}>{tr("重试保存")}</button>
       </div>}
-      {recentPhase === 'loading'  && <div role="status" style={styles.title}>正在加载最近表情…</div>}
-      {recentPhase === 'error' && <div role="alert" style={styles.title}>最近表情加载失败
-        <button data-arkme-feedback="neutral" type="button" aria-label="重试加载最近表情" style={styles.retryButton} onClick={() => { void loadRecent() }}>重试</button>
+      {recentPhase === 'loading'  && <div role="status" style={styles.title}>{tr("正在加载最近表情…")}</div>}
+      {recentPhase === 'error' && <div role="alert" style={styles.title}>{tr("最近表情加载失败")}<button data-arkme-feedback="neutral" type="button" aria-label={tr("重试加载最近表情")} style={styles.retryButton} onClick={() => { void loadRecent() }}>{tr("重试")}</button>
       </div>}
       {recentEmojis.length > 0 && <div style={styles.section}>
-        <div style={styles.titleRow}><span style={styles.title}>最近使用</span></div>
+        <div style={styles.titleRow}><span style={styles.title}>{tr("最近使用")}</span></div>
         <EmojiGrid emojis={recentEmojis} onSelect={select} />
       </div>}
       <div style={recentEmojis.length > 0 ? styles.sectionSpaced : styles.section}>
         <div style={styles.titleRow}>
-          <span style={styles.title}>默认表情</span>
-          <span style={styles.hint}>创作者：牛mo王</span>
+          <span style={styles.title}>{tr("默认表情")}</span>
+          <span style={styles.hint}>{tr("创作者：牛mo王")}</span>
         </div>
         <EmojiGrid emojis={arkmeDefaultEmojis} layout="default" onSelect={select} />
       </div></div> : <div style={styles.favoriteBody}>
         {loadPhase === 'error' && stickers.length === 0 && pendingStickers.length === 0 ? <div style={styles.stateText} role="alert">
-          <div>加载失败</div>
-          <button data-arkme-feedback="neutral" type="button" style={styles.retryButton} onClick={() => { void loadStickers() }}>重试</button>
+          <div>{tr("加载失败")}</div>
+          <button data-arkme-feedback="neutral" type="button" style={styles.retryButton} onClick={() => { void loadStickers() }}>{tr("重试")}</button>
         </div> : <div style={styles.favoriteGrid} data-arkme-favorite-sticker-grid="true">
           <button data-arkme-feedback="neutral"
-            type="button" style={styles.addTile} aria-label="添加收藏表情" title="添加收藏表情"
+            type="button" style={styles.addTile} aria-label={tr("添加收藏表情")} title={tr("添加收藏表情")}
             disabled={loadPhase === 'loading' || busyStickerId !== '' || onUploadSticker === undefined}
             onClick={() => { stickerInputRef.current?.click() }}
           ><PlusIcon /></button>
           {loadPhase === 'loading' && stickers.length === 0 && pendingStickers.length === 0 && Array.from({ length: 5 }, (_, index) => <div key={`skeleton:${String(index)}`} style={styles.skeleton} data-arkme-favorite-sticker-skeleton="true" />)}
           {pendingStickers.map(pending => <button
             key={pending.id} type="button" style={styles.stickerTile}
-            aria-label={pending.status === 'failed' ? `重试${pending.file.name}` : `正在上传${pending.file.name}`}
+            aria-label={pending.status === 'failed' ? tr("重试{v0}", { v0: pending.file.name }) : tr("正在上传{v0}", { v0: pending.file.name })}
             title={pending.error ?? pending.file.name}
             onClick={() => { if (pending.status === 'failed') void persistPendingSticker(pending) }}
             onContextMenu={event => { showContextMenu(event, pending.id, 'pending') }}
           >{pending.previewUrl !== '' ? <img src={pending.previewUrl} alt="" draggable={false} style={styles.stickerImage} /> : <span style={styles.stickerFallback}><StickerFallbackIcon /></span>}
-            <span style={styles.stickerOverlay}>{pending.status === 'uploading' ? <><span style={styles.spinner} />上传中</> : <><RefreshIcon />点击重试</>}</span>
+            <span style={styles.stickerOverlay}>{pending.status === 'uploading' ? <><span style={styles.spinner} />{tr("上传中")}</> : <><RefreshIcon />{tr("点击重试")}</>}</span>
             {pending.file.type.toLowerCase() === 'image/gif' && <span style={styles.gifBadge}>GIF</span>}
           </button>)}
           {stickers.map(sticker => {
@@ -655,7 +656,7 @@ export function ArkmeEmojiPicker({ disabled, mode = 'all', accountKey, scopeKey,
             const available = sendSupported && sticker.isAvailable && !previewFailed
             return <button
               key={sticker.fileAssetUid} type="button" style={{ ...styles.stickerTile, opacity: sticker.isAvailable ? 1 : .62 }}
-              aria-label={available ? `发送${sticker.fileName}` : previewFailed ? `重试${sticker.fileName}` : !sendSupported ? `${sticker.fileName}仅聊天可发送` : `${sticker.fileName}不可用`}
+              aria-label={available ? tr("发送{v0}", { v0: sticker.fileName }) : previewFailed ? tr("重试{v0}", { v0: sticker.fileName }) : !sendSupported ? `${sticker.fileName}仅聊天可发送` : tr("{v0}不可用", { v0: sticker.fileName })}
               aria-disabled={!available}
               title={available ? sticker.fileName : previewFailed ? '预览加载失败，点击重试' : !sendSupported ? '收藏表情仅支持私聊和群聊发送' : sticker.unavailableReason}
               onClick={event => { if (previewFailed) retryPreview(sticker, event); else if (available) void sendSticker(sticker) }}
@@ -666,21 +667,21 @@ export function ArkmeEmojiPicker({ disabled, mode = 'all', accountKey, scopeKey,
                 alt="" draggable={false} style={styles.stickerImage}
                 onError={() => { setPreviewFailedIds(current => new Set(current).add(sticker.fileAssetUid)) }}
               /> : <span style={styles.stickerFallback}><StickerFallbackIcon /></span>}
-              {busyStickerId === sticker.fileAssetUid && <span style={styles.stickerOverlay}><span style={styles.spinner} />处理中</span>}
-              {busyStickerId !== sticker.fileAssetUid && previewFailed && <span style={styles.stickerOverlay}><RefreshIcon />点击重试</span>}
-              {busyStickerId !== sticker.fileAssetUid && !sticker.isAvailable && !previewFailed && <span style={styles.stickerOverlay}>不可用</span>}
+              {busyStickerId === sticker.fileAssetUid && <span style={styles.stickerOverlay}><span style={styles.spinner} />{tr("处理中")}</span>}
+              {busyStickerId !== sticker.fileAssetUid && previewFailed && <span style={styles.stickerOverlay}><RefreshIcon />{tr("点击重试")}</span>}
+              {busyStickerId !== sticker.fileAssetUid && !sticker.isAvailable && !previewFailed && <span style={styles.stickerOverlay}>{tr("不可用")}</span>}
               {sticker.isAnimated && <span style={styles.gifBadge}>GIF</span>}
             </button>
           })}
-          {loadPhase !== 'loading' && stickers.length === 0 && pendingStickers.length === 0 && <div style={styles.empty}>暂无收藏表情，点击 + 添加</div>}
+          {loadPhase !== 'loading' && stickers.length === 0 && pendingStickers.length === 0 && <div style={styles.empty}>{tr("暂无收藏表情，点击 + 添加")}</div>}
         </div>}
         <input ref={stickerInputRef} type="file" accept="image/*,.gif" hidden onChange={addSticker} />
       </div>}
       {mode === 'all' && <div style={styles.toolbar}>
-        <button data-arkme-feedback="neutral" data-arkme-feedback-selected={tab === 'emoji'} type="button" style={{ ...styles.tab, ...(tab === 'emoji' ? { background: arkmeTheme.accentSoft, color: arkmeTheme.text } : {}) }} aria-label="默认表情" title="默认表情" onClick={() => { setTab('emoji') }}><SmileIcon /></button>
-        <button data-arkme-feedback="neutral" data-arkme-feedback-selected={tab === 'favorite'} type="button" style={{ ...styles.tab, ...(tab === 'favorite' ? { background: arkmeTheme.accentSoft, color: arkmeTheme.text } : {}) }} aria-label="收藏表情" title="收藏表情" onClick={() => { setTab('favorite') }}><HeartIcon /></button>
+        <button data-arkme-feedback="neutral" data-arkme-feedback-selected={tab === 'emoji'} type="button" style={{ ...styles.tab, ...(tab === 'emoji' ? { background: arkmeTheme.accentSoft, color: arkmeTheme.text } : {}) }} aria-label={tr("默认表情")} title={tr("默认表情")} onClick={() => { setTab('emoji') }}><SmileIcon /></button>
+        <button data-arkme-feedback="neutral" data-arkme-feedback-selected={tab === 'favorite'} type="button" style={{ ...styles.tab, ...(tab === 'favorite' ? { background: arkmeTheme.accentSoft, color: arkmeTheme.text } : {}) }} aria-label={tr("收藏表情")} title={tr("收藏表情")} onClick={() => { setTab('favorite') }}><HeartIcon /></button>
       </div>}
-      {mode === 'all' && contextMenu !== undefined && <ArkmeActionMenu label="收藏表情操作"
+      {mode === 'all' && contextMenu !== undefined && <ArkmeActionMenu label={tr("收藏表情操作")}
         point={{ x: contextMenu.x, y: contextMenu.y }} onClose={() => setContextMenu(undefined)}
         actions={contextMenu.kind === 'remote' ? (() => {
           const sticker = stickers.find(item => item.fileAssetUid === contextMenu.stickerId)

@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { ArrowClockwise } from '@phosphor-icons/react/dist/icons/ArrowClockwise'
 import { Pause } from '@phosphor-icons/react/dist/icons/Pause'
@@ -81,6 +82,7 @@ export interface ArkmeCallDetailContentProps {
 
 /** The selected-call pane, shared by the call browser and conversation drawer. */
 export function ArkmeCallDetailContent({ selectedItem, detail, detailState, detailError, avatarRefForName = () => undefined, compact = false, initialVideoUrl, tourSample = false }: ArkmeCallDetailContentProps) {
+  useArkmeLocale()
   const selectedIsSample = selectedItem.callRef.startsWith('sample-')
   const [samplePerspective, setSamplePerspective] = useState<SamplePerspective>('primary')
   const [playingVideoKey, setPlayingVideoKey] = useState('')
@@ -140,7 +142,7 @@ export function ArkmeCallDetailContent({ selectedItem, detail, detailState, deta
   }
   const renderVideoPreviewFallback = (label: string, inset = false) => {
     return <span
-      aria-label={`${label}缩略图暂不可用`}
+      aria-label={tr("{v0}缩略图暂不可用", { v0: label })}
       style={styles.videoPreviewFallback}
     >
       <span style={{ ...styles.videoPreviewFigure, width: inset ? '48%' : '32%' }} />
@@ -246,10 +248,10 @@ export function ArkmeCallDetailContent({ selectedItem, detail, detailState, deta
     const accepted = detail?.acceptedAtMillis ?? selectedItem.acceptedAtMillis
     if (!selectedIsSample && detailState !== 'ready') return null
     if (!hasRenderableVideo && accepted <= 0) return null
-    return <section ref={videoSection} style={styles.sampleMedia} aria-label="视频记录" data-arkme-call-tour-target={tourSample ? 'video' : undefined}>
+    return <section ref={videoSection} style={styles.sampleMedia} aria-label={tr("视频记录")} data-arkme-call-tour-target={tourSample ? 'video' : undefined}>
       <header style={styles.videoTitleRow} data-arkme-call-video-title-row="aligned">
         <span style={styles.videoTitleText}>
-          <h3 style={styles.videoTitle}>视频记录</h3>
+          <h3 style={styles.videoTitle}>{tr("视频记录")}</h3>
           <span style={styles.videoCaption}>{titleCaption}</span>
         </span>
         {(selectedIsSample || canSwitchRealPerspective) && <button
@@ -262,7 +264,7 @@ export function ArkmeCallDetailContent({ selectedItem, detail, detailState, deta
             setVideoCurrentTime(0)
             setSamplePerspective(value => value === 'primary' ? 'secondary' : 'primary')
           }}
-        ><ArrowClockwise size={13} />切换视角</button>}
+        ><ArrowClockwise size={13} />{tr("切换视角")}</button>}
       </header>
       <div style={styles.sampleImageFrame}>
         {selectedIsSample ? <>
@@ -272,7 +274,7 @@ export function ArkmeCallDetailContent({ selectedItem, detail, detailState, deta
             draggable={false}
             style={styles.sampleImage}
           />
-          <span style={{ ...styles.videoPill, ...styles.videoPillTop }}>示例画面</span>
+          <span style={{ ...styles.videoPill, ...styles.videoPillTop }}>{tr("示例画面")}</span>
           <span style={{ ...styles.videoPill, ...styles.videoPillBottomLeft }}>{sampleMainLabel}</span>
           <span style={{ ...styles.videoPill, ...styles.videoPillBottomRight }}>{formatDuration(selectedItem.durationSeconds)}</span>
           <span style={styles.videoInset}>
@@ -290,7 +292,7 @@ export function ArkmeCallDetailContent({ selectedItem, detail, detailState, deta
           {realMain.videoUrl !== undefined && !realPlaybackActive && <button
             type="button"
             style={{ ...styles.videoPlay, ...styles.videoPlayButton }}
-            aria-label="播放视频记录"
+            aria-label={tr("播放视频记录")}
             onClick={() => { startVideoPlayback(realMain) }}
           ><Play size={25} weight="fill" /></button>}
           <span style={{ ...styles.videoPill, ...styles.videoPillBottomLeft, bottom: realMainPillBottom }}>{videoPerspectiveLabel(realMain, '主视角')}</span>
@@ -299,7 +301,7 @@ export function ArkmeCallDetailContent({ selectedItem, detail, detailState, deta
             {renderPerspectiveMedia(realInset, { inset: true, alt: `${videoPerspectiveLabel(realInset, '对方视角')}视频通话记录小窗`, active: realPlaybackActive })}
             <span style={{ ...styles.videoPill, right: 7, bottom: 7, padding: '4px 6px', fontSize: 9 }}>{videoPerspectiveLabel(realInset, '对方视角')}</span>
           </span>}
-          {realPlaybackActive && <div style={styles.videoControls} aria-label="视频播放控制" data-arkme-call-video-controls="overlay">
+          {realPlaybackActive && <div style={styles.videoControls} aria-label={tr("视频播放控制")} data-arkme-call-video-controls="overlay">
             <button type="button" style={styles.videoControlButton} aria-label={videoPlaying ? '暂停视频记录' : '继续播放视频记录'} onClick={toggleVideoPlayback}>
               {videoPlaying ? <Pause size={15} weight="fill" /> : <Play size={15} weight="fill" />}
             </button>
@@ -322,25 +324,25 @@ export function ArkmeCallDetailContent({ selectedItem, detail, detailState, deta
           alt={`${selectedItem.peerDisplayName}视频通话记录画面`}
           draggable={false}
           style={styles.sampleImage}
-        /> : <div style={styles.videoUnavailable}>视频记录暂不可用</div>}
+        /> : <div style={styles.videoUnavailable}>{tr("视频记录暂不可用")}</div>}
       </div>
     </section>
   }
 
   return <div data-arkme-call-detail-content="true" style={{ ...styles.detailBody, ...(compact ? { padding: '8px 16px 24px' } : {}) }}>
           <section style={styles.card} data-arkme-call-tour-target={tourSample ? 'summary' : undefined}>
-            <h3 style={styles.cardTitle}>AI 摘要</h3>
+            <h3 style={styles.cardTitle}>{tr("AI 摘要")}</h3>
             <p style={styles.cardText}>
               {detailState === 'loading' ? '正在读取通话详情...'
                 : detailState === 'error' ? detailError || '通话详情暂时不可用'
-                  : detail?.summaryText ?? selectedItem.summaryPreview ?? (detail?.summaryStatus === 'pending' ? '摘要生成中…' : detail?.summaryStatus === 'failed' ? '摘要生成失败' : '这次通话还没有摘要。')}
+                  : detail?.summaryText ?? selectedItem.summaryPreview ?? (detail?.summaryStatus === 'pending' ? tr("摘要生成中…") : detail?.summaryStatus === 'failed' ? '摘要生成失败' : '这次通话还没有摘要。')}
             </p>
           </section>
           {renderVideoRecord()}
           {detail?.transcriptSegments !== undefined && detail.transcriptSegments.length > 0 && <section style={styles.transcript}>
             <header style={styles.transcriptHeader} data-arkme-call-transcript-header="aligned">
-              <h3 style={styles.transcriptTitle}>通话转写</h3>
-              <span style={styles.transcriptCount}>{detail.transcriptSegments.length} 段对话</span>
+              <h3 style={styles.transcriptTitle}>{tr("通话转写")}</h3>
+              <span style={styles.transcriptCount}>{detail.transcriptSegments.length} {tr("段对话")}</span>
             </header>
             {detail.transcriptSegments.map(segment => {
               const mine = segment.speakerUserId !== undefined && detail.participants.some(participant => participant.isCurrentUser && participant.userId === segment.speakerUserId)
@@ -369,7 +371,7 @@ export function ArkmeCallDetailContent({ selectedItem, detail, detailState, deta
                 <span style={{ ...styles.segmentStack, ...(mine ? styles.segmentStackMine : {}) }}>
                   {segment.audioUrl ? <button type="button"
                     data-arkme-call-tour-target={tourSample && segment.segmentId === 'sample-video-1' ? 'utterance' : undefined}
-                    aria-label={`${highlighted ? '停止' : playback === 'failed' ? '重试播放' : '播放'}${segment.speakerDisplayName}的录音片段：${segment.text}`}
+                    aria-label={`${highlighted ? '停止' : playback === 'failed' ? '重试播放' : tr("播放")}${segment.speakerDisplayName}的录音片段：${segment.text}`}
                     aria-pressed={highlighted}
                     aria-busy={playback === 'loading'}
                     onClick={() => { transcriptPlayback.toggle(segment) }}
@@ -389,16 +391,16 @@ export function ArkmeCallDetailContent({ selectedItem, detail, detailState, deta
             })}
             <div style={styles.endEvent}>
               <i style={styles.endLine} />
-              <span>{detail.hangupParticipant ? `${detail.hangupParticipant.displayName}已挂断通话` : '通话已结束'}</span>
+              <span>{detail.hangupParticipant ? tr("{v0}已挂断通话", { v0: detail.hangupParticipant.displayName }) : '通话已结束'}</span>
               <i style={styles.endLine} />
             </div>
           </section>}
-          {detailState === 'ready' && detail !== undefined && detail.transcriptSegments.length === 0 && <section style={styles.transcript} aria-label="通话转写">
+          {detailState === 'ready' && detail !== undefined && detail.transcriptSegments.length === 0 && <section style={styles.transcript} aria-label={tr("通话转写")}>
             <header style={styles.transcriptHeader} data-arkme-call-transcript-header="aligned">
-              <h3 style={styles.transcriptTitle}>通话转写</h3>
-              <span style={styles.transcriptCount}>0 段对话</span>
+              <h3 style={styles.transcriptTitle}>{tr("通话转写")}</h3>
+              <span style={styles.transcriptCount}>{tr("0 段对话")}</span>
             </header>
-            <p role="status" style={styles.transcriptEmpty}>{detail.transcriptFailed ? '转写失败' : detail.transcriptPending ? '转写处理中' : '暂无转写内容'}</p>
+            <p role="status" style={styles.transcriptEmpty}>{detail.transcriptFailed ? tr("转写失败") : detail.transcriptPending ? '转写处理中' : tr("暂无转写内容")}</p>
           </section>}
         </div>
 }

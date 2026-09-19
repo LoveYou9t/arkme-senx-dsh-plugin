@@ -1,3 +1,4 @@
+import { tr } from './locale.js'
 import type { InjectFace, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
@@ -100,7 +101,7 @@ export function ArkmeFooterAction({
   const accessibleLabel = [
     'Arkme',
     ...(statusLabel === '' ? [] : [statusLabel]),
-    ...(statusLabel !== '' || normalizedUnread === 0 ? [] : [`${unreadLabel} 条未读`]),
+    ...(statusLabel !== '' || normalizedUnread === 0 ? [] : [tr("{v0} 条未读", { v0: unreadLabel })]),
   ].join(' · ')
   return <div style={wide ? actionRowStyle : { width: 36 }}>
     <button data-arkme-feedback="neutral"

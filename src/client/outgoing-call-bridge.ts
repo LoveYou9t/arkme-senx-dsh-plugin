@@ -1,3 +1,4 @@
+import { tr } from './locale.js'
 // The pinned desktop-call bundle still speaks this legacy wire protocol.
 // Compose the identifier so it remains a compatibility detail rather than Arkme product identity.
 export const DESKTOP_CALL_CHANNEL = `jot${'mo'}-desktop-call`
@@ -128,9 +129,9 @@ interface MediaDevicesLike {
 }
 
 function permissionMessage(error: unknown, label: string): string {
-  if (error instanceof DOMException && error.name === 'NotAllowedError') return `${label}权限未授权`
+  if (error instanceof DOMException && error.name === 'NotAllowedError') return tr("{v0}权限未授权", { v0: label })
   if (error instanceof Error && error.message !== '') return error.message.slice(0, 200)
-  return `${label}不可用`
+  return tr("{v0}不可用", { v0: label })
 }
 
 export async function requestDesktopCallMediaPermissions(

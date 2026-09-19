@@ -1,3 +1,4 @@
+import { tr } from './locale.js'
 import type { CSSProperties } from 'react'
 import { arkmeTheme } from './arkme-theme.js'
 import { CONVERSATION_REMOVAL_COLLAPSE_MS, type ConversationRemovalPhase } from './use-conversation-removal-feedback.js'
@@ -36,5 +37,5 @@ export function ArkmeConversationRemovalFeedback({ phase }: { phase: Conversatio
     position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
     padding: '0 12px', borderRadius: 'inherit', background: arkmeTheme.layer2, color: arkmeTheme.secondary,
     fontSize: 12, lineHeight: '18px', pointerEvents: 'none', overflow: 'hidden',
-  }}>已移除对话，可在联系人中找回</span>
+  }}>{tr("已移除对话，可在联系人中找回")}</span>
 }

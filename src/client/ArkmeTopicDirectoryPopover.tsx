@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import {
   useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties,
 } from 'react'
@@ -163,6 +164,7 @@ function cacheWithTopics(
 export function ArkmeTopicDirectoryPopover({
   userId, environment = 'prod', selectedSource, trigger = 'button', onSelect, onSelectionRefreshed = onSelect, onSelectionInvalidated, onSelfSourcesResolution, onCreateWarning, onCreateTopicReady, retryRevision,
 }: ArkmeTopicDirectoryPopoverProps) {
+  useArkmeLocale()
   const directory = useMemo(() => selfTopicDirectory(userId, environment), [userId, environment])
   const snapshot = useSyncExternalStore(directory.subscribe, directory.getSnapshot, directory.getSnapshot)
   const resolvedRoots = useRef<{ directory: typeof directory; aggregateSource: ArkmeSourceItem; defaultCategorySource: ArkmeSourceItem }>()
@@ -365,19 +367,19 @@ export function ArkmeTopicDirectoryPopover({
 
   return <>
     {trigger === 'button' && <button data-arkme-feedback="neutral" data-arkme-feedback-selected={open}
-      ref={triggerRef} type="button" aria-label="打开主题" title="主题" aria-haspopup="dialog" aria-expanded={open}
+      ref={triggerRef} type="button" aria-label={tr("打开主题")} title={tr("主题")} aria-haspopup="dialog" aria-expanded={open}
       data-arkme-topic-directory-trigger="leading"
       style={{ ...styles.trigger, ...(open ? styles.triggerActive : {}) }}
       onClick={() => { setOpen(value => !value) }}
     ><ListBullets size={17} aria-hidden /></button>}
-    {open && <div ref={popoverRef} role="dialog" aria-label="主题" style={styles.popover}>
+    {open && <div ref={popoverRef} role="dialog" aria-label={tr("主题")} style={styles.popover}>
       <div style={styles.head}>
-        <h3 style={styles.heading}>主题</h3>
+        <h3 style={styles.heading}>{tr("主题")}</h3>
         <ArkmeSourceSortControl value={sourceSort} onChange={value => {
           setSourceSort(value)
           setHoveredSourceRef(undefined)
         }} />
-        <button data-arkme-feedback="neutral" type="button" aria-label="关闭主题" style={styles.close} onClick={() => { setOpen(false) }}>×</button>
+        <button data-arkme-feedback="neutral" type="button" aria-label={tr("关闭主题")} style={styles.close} onClick={() => { setOpen(false) }}>×</button>
       </div>
       <label style={styles.search}>
         <svg aria-hidden viewBox="0 0 16 16" width="14" height="14" fill="none">
@@ -385,11 +387,11 @@ export function ArkmeTopicDirectoryPopover({
           <path d="m10.2 10.2 3.05 3.05" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
         </svg>
         <input
-          type="search" value={query} placeholder="搜索主题" aria-label="搜索主题" style={styles.searchInput}
+          type="search" value={query} placeholder={tr("搜索主题")} aria-label={tr("搜索主题")} style={styles.searchInput}
           onChange={event => { setQuery(event.currentTarget.value) }}
         />
       </label>
-      <div role={cardMode ? 'list' : 'tree'} aria-label="主题列表" style={styles.tree}>
+      <div role={cardMode ? 'list' : 'tree'} aria-label={tr("主题列表")} style={styles.tree}>
         {!cardMode && rows.map(row => {
           const source = row.source
           return <ArkmeTopicTreeRow
@@ -410,12 +412,12 @@ export function ArkmeTopicDirectoryPopover({
           onHoverChange={hovered => { setHoveredSourceRef(hovered ? source.sourceRef : undefined) }}
           onSelect={() => { selectSource(source) }}
         />)}
-        {busy && (cardMode ? cardSources.length === 0 : rows.length === 0) && <div role="status" style={styles.status}>正在加载主题…</div>}
+        {busy && (cardMode ? cardSources.length === 0 : rows.length === 0) && <div role="status" style={styles.status}>{tr("正在加载主题…")}</div>}
         {!busy && error === '' && (cardMode ? cardSources.length === 0 : rows.length === 0) && <div style={styles.status}>{query.trim() === '' ? '暂无主题' : '没有匹配的主题'}</div>}
         {error !== '' && <div role="alert" style={{ ...styles.status, ...styles.error }}>
           <div>{error}</div>
           <button data-arkme-feedback="neutral" type="button" style={{ ...styles.close, width: 'auto', margin: '8px auto 0', padding: '0 10px', fontSize: 12 }}
-            onClick={() => { void directory.ensure(true) }}>重试</button>
+            onClick={() => { void directory.ensure(true) }}>{tr("重试")}</button>
         </div>}
       </div>
       <ArkmeTopicCreateFooter onCreate={() => { openCreate(null) }} />

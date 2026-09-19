@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import { ArkmeActionMenu } from './ArkmeDshMenu.js'
 import { ARKME_CONVERSATION_HEADER_HEIGHT } from './arkme-layout.js'
 import { ArkmeRightPanelHeader } from './ArkmeRightPanelHeader.js'
@@ -296,7 +297,7 @@ function participantNames(item: ArkmeRelatedRecordingItem): string[] {
 
 function participantCardText(item: ArkmeRelatedRecordingItem): string {
   const names = participantNames(item)
-  return names.length === 0 ? '' : `参与者: ${names.join(' / ')}`
+  return names.length === 0 ? '' : tr("参与者: {v0}", { v0: names.join(' / ') })
 }
 
 function participantDetailText(item: ArkmeRelatedRecordingItem): string {
@@ -331,7 +332,7 @@ function recordingTimeSlotText(item: ArkmeRelatedRecordingItem): string {
 }
 
 function bucketCountText(count: number): string {
-  return `${count}段`
+  return tr("{v0}段", { v0: count })
 }
 
 function initialExpandedGroupKeys(groups: readonly RelatedRecordingGroup[]): Set<string> {
@@ -358,6 +359,7 @@ export interface RelatedRecordingsPanelProps {
 }
 
 export function RelatedRecordingsPanel(props: RelatedRecordingsPanelProps) {
+  useArkmeLocale()
   const monthEntries = useMemo(() => buildRelatedRecordingMonthEntries(props.items), [props.items])
   const selectedMonth = effectiveSelectedMonth(monthEntries, props.selectedMonth)
   const visibleItems = useMemo(() => filterItemsByMonth(props.items, selectedMonth), [props.items, selectedMonth])
@@ -381,16 +383,16 @@ export function RelatedRecordingsPanel(props: RelatedRecordingsPanelProps) {
     props.onMonthChange(month)
     setFilterOpen(false)
   }
-  return <aside style={styles.panel} aria-label="相关录音">
-    <ArkmeRightPanelHeader title="相关录音" onClose={props.onClose} closeLabel="关闭相关录音" />
+  return <aside style={styles.panel} aria-label={tr("相关录音")}>
+    <ArkmeRightPanelHeader title={tr("相关录音")} onClose={props.onClose} closeLabel={tr("关闭相关录音")} />
     <div style={styles.panelHeader}>
       <div style={styles.subtitleRow}>
-        <p style={styles.subtitle}>你与 {props.contactName} 的线下交流记录</p>
+        <p style={styles.subtitle}>{tr("你与")} {props.contactName} {tr("的线下交流记录")}</p>
         <div style={styles.filterWrap}>
-          <ArkmeActionMenu label="按月份筛选" open={filterOpen} align="end"
+          <ArkmeActionMenu label={tr("按月份筛选")} open={filterOpen} align="end"
             onClose={() => setFilterOpen(false)} selectedIds={[selectedMonth]}
             anchor={<button data-arkme-feedback="neutral"
-              type="button" style={styles.filter} aria-label="按时间筛选相关录音"
+              type="button" style={styles.filter} aria-label={tr("按时间筛选相关录音")}
               aria-haspopup="menu" aria-expanded={filterOpen} onClick={() => setFilterOpen(value => !value)}>
               <span>{selectedFilterLabel}</span><CaretDown size={16} weight="bold" style={styles.filterChevron} aria-hidden />
             </button>}
@@ -406,10 +408,10 @@ export function RelatedRecordingsPanel(props: RelatedRecordingsPanelProps) {
     </div>
     <div style={styles.body}>
       {props.state === 'partial' && <div style={styles.partial}>{props.stateMessage || '部分相关录音暂不可用，已展示可读取内容。'}</div>}
-      {!showCards && props.state === 'loading' && <div style={styles.state}><div style={styles.stateBox}>正在读取相关录音…</div></div>}
-      {!showCards && props.state === 'generating' && <div style={styles.state}><div style={styles.stateBox}>{props.stateMessage || '相关录音正在整理中，请稍后再试。'}<br /><button type="button" style={styles.retry} onClick={props.onRetry}>重新加载</button></div></div>}
-      {!showCards && props.state === 'empty' && <div style={styles.state}><div style={styles.stateBox}>暂无相关录音</div></div>}
-      {!showCards && (props.state === 'error' || props.error !== '') && <div style={styles.state}><div style={styles.stateBox}>{props.error || props.stateMessage || '相关录音暂时无法读取'}<br /><button type="button" style={styles.retry} onClick={props.onRetry}>重试</button></div></div>}
+      {!showCards && props.state === 'loading' && <div style={styles.state}><div style={styles.stateBox}>{tr("正在读取相关录音…")}</div></div>}
+      {!showCards && props.state === 'generating' && <div style={styles.state}><div style={styles.stateBox}>{props.stateMessage || '相关录音正在整理中，请稍后再试。'}<br /><button type="button" style={styles.retry} onClick={props.onRetry}>{tr("重新加载")}</button></div></div>}
+      {!showCards && props.state === 'empty' && <div style={styles.state}><div style={styles.stateBox}>{tr("暂无相关录音")}</div></div>}
+      {!showCards && (props.state === 'error' || props.error !== '') && <div style={styles.state}><div style={styles.stateBox}>{props.error || props.stateMessage || '相关录音暂时无法读取'}<br /><button type="button" style={styles.retry} onClick={props.onRetry}>{tr("重试")}</button></div></div>}
       {showCards && groups.map(group => {
         const expanded = expandedGroupKeys.has(group.key)
         return <section key={group.key} style={styles.group}>
@@ -440,7 +442,7 @@ export function RelatedRecordingsPanel(props: RelatedRecordingsPanelProps) {
                 {showSourceAvatar && <span style={styles.cardAvatar}><ArkmeUserAvatar
                   {...(props.contactAvatarRef === undefined ? {} : { avatarRef: props.contactAvatarRef })}
                   size={20}
-                  label={`${props.contactName}头像`}
+                  label={tr("{v0}头像", { v0: props.contactName })}
                 /></span>}
               </div>}
             </button>
@@ -448,9 +450,9 @@ export function RelatedRecordingsPanel(props: RelatedRecordingsPanelProps) {
         </section>
       })}
       {props.hasMore && <button type="button" style={{ ...styles.more, opacity: props.loadingMore ? .55 : 1 }} disabled={props.loadingMore} onClick={props.onLoadMore}>
-        {props.loadingMore ? '正在加载…' : '加载更多'}
+        {props.loadingMore ? tr("正在加载…") : tr("加载更多")}
       </button>}
-      {showCards && !props.hasMore && <div style={styles.end}>没有更多内容了</div>}
+      {showCards && !props.hasMore && <div style={styles.end}>{tr("没有更多内容了")}</div>}
     </div>
   </aside>
 }
@@ -463,6 +465,7 @@ export interface RelatedRecordingDetailProps {
 }
 
 export function RelatedRecordingDetail(props: RelatedRecordingDetailProps) {
+  useArkmeLocale()
   const [detailItem, setDetailItem] = useState(props.item)
   const [showTranscript, setShowTranscript] = useState(false)
   const [detailLoading, setDetailLoading] = useState(false)
@@ -504,16 +507,16 @@ export function RelatedRecordingDetail(props: RelatedRecordingDetailProps) {
   const detail = <>
     <style>{ARKME_RELATED_RECORDING_MODAL_SCROLLBAR_CSS}</style>
     <div style={styles.backdrop} role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) props.onClose() }}>
-      <section style={styles.modal} role="dialog" aria-modal="true" aria-label="相关录音详情">
+      <section style={styles.modal} role="dialog" aria-modal="true" aria-label={tr("相关录音详情")}>
         <header style={styles.modalHeader}>
           <div style={styles.modalTitleGroup}>
             <h2 style={styles.modalTitle}>{detailItem.title || '未命名录音'}</h2>
             {timeText !== '' && <span style={styles.modalTitleTime}>{timeText}</span>}
           </div>
-          <button type="button" style={styles.iconButton} onClick={props.onClose} aria-label="关闭录音详情"><X size={25} aria-hidden /></button>
+          <button type="button" style={styles.iconButton} onClick={props.onClose} aria-label={tr("关闭录音详情")}><X size={25} aria-hidden /></button>
         </header>
         <div className={ARKME_RELATED_RECORDING_MODAL_BODY_CLASS} style={styles.modalBody}>
-          <h3 style={styles.sectionLabel}><span style={styles.sectionIcon} aria-hidden="true">📝</span><span>时段总结</span></h3>
+          <h3 style={styles.sectionLabel}><span style={styles.sectionIcon} aria-hidden="true">📝</span><span>{tr("时段总结")}</span></h3>
           <p style={styles.detailSummary}>{detailItem.summary || '暂无总结'}</p>
           {detailMetaText !== '' && <div style={styles.detailMeta}>{detailMetaText}</div>}
           <div style={styles.actions}>
@@ -522,8 +525,8 @@ export function RelatedRecordingDetail(props: RelatedRecordingDetailProps) {
                 {showTranscript ? '收起原文' : '查看原文'}
               </button>
             }
-            {detailLoading && <span style={styles.actionLabel}>正在加载原文…</span>}
-            {detailError !== '' && <button type="button" style={styles.secondaryButton} onClick={retryDetail}>重新加载原文</button>}
+            {detailLoading && <span style={styles.actionLabel}>{tr("正在加载原文…")}</span>}
+            {detailError !== '' && <button type="button" style={styles.secondaryButton} onClick={retryDetail}>{tr("重新加载原文")}</button>}
             {detailError !== '' && <span style={styles.actionLabel}>{detailError}</span>}
           </div>
           {showTranscript && hasTranscript && <div style={styles.transcript}>{transcript}</div>}

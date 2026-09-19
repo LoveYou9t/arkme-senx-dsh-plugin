@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import type { ArkmeEnvironment, ArkmeSourceItem } from '../types.js'
 import type { ArkmeRecordTopicAssignmentResult } from '../record-topic-assignment-contract.js'
@@ -20,6 +21,7 @@ export function ArkmeRecordTopicAssignmentDialog(props: {
   onRefresh(): void
   onAssigned(result: ArkmeRecordTopicAssignmentResult, target?: ArkmeSourceItem): void
 }) {
+  useArkmeLocale()
   const port = props.port ?? recordTopicAssignmentPort
   const directory = useMemo(() => props.directory ?? selfTopicDirectory(props.userId, props.environment), [props.directory, props.userId, props.environment])
   const snapshot = useSyncExternalStore(directory.subscribe, directory.getSnapshot, directory.getSnapshot)
@@ -97,7 +99,7 @@ export function ArkmeRecordTopicAssignmentDialog(props: {
           {(writeError || selectionError) && <p role="alert" style={{ ...statusStyle, color: arkmeTheme.danger }}>{writeError || selectionError}</p>}
           {selectionNotice && <p role="status" style={statusStyle}>{selectionNotice}</p>}
           {pending && <p role="status" style={statusStyle}>{pendingLabel}</p>}
-          {requiresRefresh && <button data-arkme-feedback="neutral" type="button" onClick={props.onRefresh}>刷新并重新选择</button>}
+          {requiresRefresh && <button data-arkme-feedback="neutral" type="button" onClick={props.onRefresh}>{tr("刷新并重新选择")}</button>}
         </>,
       }}
     />

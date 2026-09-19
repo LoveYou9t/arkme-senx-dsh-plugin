@@ -370,6 +370,7 @@ export class CallHistoryService {
     return {
       ...presentation,
       direction: firstNumber(source, ['cr', 'caller_id', 'callerId', 'caller_user_id', 'callerUserId']) === userId ? 'outgoing' : 'incoming',
+      stableId: await this.publicStableId(`trtc:${roomId}`),
       callRef: await this.sealCallRef({ version: 1, userId, roomId, stableId: `trtc:${roomId}`, issuedAtMillis: Date.now() }),
       ...(startedAtMillis > 0 ? { startedAtMillis } : {}),
       ...(rawDuration === undefined ? {} : { durationSeconds: Math.max(0, Math.trunc(numberValue(rawDuration))) }),
@@ -632,6 +633,7 @@ export class CallHistoryService {
     const hangupParticipant = participants.find(participant => participant.userId === numberValue(hangupUserId))
     return {
       callRef: await this.sealCallRef({ ...payload, issuedAtMillis: Date.now() }),
+      stableId: await this.publicStableId(payload.stableId),
       title: firstString(raw, ['title', 'display_name', 'displayName', 'peer_display_name', 'peerDisplayName']) || '通话详情',
       mediaType,
       startedAtMillis,

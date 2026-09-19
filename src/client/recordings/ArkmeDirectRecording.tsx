@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale, arkmeIntlLocale } from '../locale.js'
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { Microphone } from '@phosphor-icons/react/dist/icons/Microphone'
@@ -62,6 +63,7 @@ export function useDirectRecordingOwner(accountKey: string | undefined, userId: 
 }
 
 export function ArkmeDirectRecordingButton({ onStart }: { onStart(): void }) {
+  useArkmeLocale()
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
   const recording = state.phase === 'recording'
   const breathStyle = useRecordingBreathStyle(recording, state.startedAt)
@@ -71,6 +73,7 @@ export function ArkmeDirectRecordingButton({ onStart }: { onStart(): void }) {
 }
 
 export function ArkmeDirectRecordingStatus({ floating = false, onShowTasks }: { floating?: boolean; onShowTasks?(): void }) {
+  useArkmeLocale()
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot)
   const breathStyle = useRecordingBreathStyle(state.phase === 'recording', state.startedAt)
   if (!state.accountKey || (floating && state.phase === 'idle') || (!floating && state.phase === 'idle' && !state.pending.length && !state.error && !state.message)) return null
@@ -81,33 +84,33 @@ export function ArkmeDirectRecordingStatus({ floating = false, onShowTasks }: { 
     const url = URL.createObjectURL(file); const link = document.createElement('a')
     link.href = url; link.download = file.name; link.click(); setTimeout(() => URL.revokeObjectURL(url), 60_000)
   }
-  const content = <section aria-label="直接录音状态" data-arkme-direct-recording={floating ? 'floating' : 'calendar'}
+  const content = <section aria-label={tr("直接录音状态")} data-arkme-direct-recording={floating ? 'floating' : 'calendar'}
     style={{ ...breathStyle, marginTop: floating ? 0 : 12, padding: '12px', borderRadius: 10, border: `1px solid ${theme.border}`, background: theme.layer2, color: theme.text, fontSize: 13, lineHeight: '20px', minWidth: 0,
       ...(floating ? { position: 'fixed', bottom: 20, right: 24, zIndex: 80, maxWidth: 'calc(100vw - 48px)', boxSizing: 'border-box', boxShadow: theme.shadow } : {}) }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
       {recording && <span data-arkme-recording-breath="dot" aria-hidden style={{ width: 7, height: 7, borderRadius: '50%', background: theme.danger }} />}
       <span role="status">{recording ? '正在录音' : state.message || '本机录音'}</span>
       {(recording || state.phase === 'saving') && <span style={{ fontVariantNumeric: 'tabular-nums' }}>{recordingClock(state.elapsedMillis)}</span>}
-      {floating && <button type="button" style={button} onClick={() => arkmeUi.showRecordings()}>查看录音</button>}
-      {recording && <button type="button" style={{ ...primary, marginLeft: 'auto' }} onClick={() => { void store.stop() }}>结束并保存</button>}
+      {floating && <button type="button" style={button} onClick={() => arkmeUi.showRecordings()}>{tr("查看录音")}</button>}
+      {recording && <button type="button" style={{ ...primary, marginLeft: 'auto' }} onClick={() => { void store.stop() }}>{tr("结束并保存")}</button>}
       {state.phase === 'uploading' && <span>{Math.floor(state.progress * 100)}%</span>}
     </div>
     {!floating && recording && <>
-      <div aria-label="麦克风音量" style={{ display: 'flex', height: 24, alignItems: 'center', gap: 3, margin: '8px 0' }}>
+      <div aria-label={tr("麦克风音量")} style={{ display: 'flex', height: 24, alignItems: 'center', gap: 3, margin: '8px 0' }}>
         {state.levels.map((level, index) => <i key={index} style={{ width: 4, height: Math.max(2, Math.min(24, level * 48)), borderRadius: 2, background: theme.accent }} />)}
       </div>
-      <div style={{ color: theme.secondary, fontSize: 12 }}>本次最长 {Math.round(state.maxMillis / 60000)} 分钟 · 请勿关闭页面或让电脑休眠</div>
+      <div style={{ color: theme.secondary, fontSize: 12 }}>{tr("本次最长")} {Math.round(state.maxMillis / 60000)} {tr("分钟 · 请勿关闭页面或让电脑休眠")}</div>
     </>}
     {state.error && <div role="alert" style={{ marginTop: 8, color: theme.danger }}>{state.error}</div>}
     {!floating && state.phase === 'idle' && state.pending.length > 0 && <div style={{ marginTop: 8 }}>
-      <div style={{ color: theme.secondary }}>待提交录音（仅当前浏览器保存）</div>
+      <div style={{ color: theme.secondary }}>{tr("待提交录音（仅当前浏览器保存）")}</div>
       {state.pending.map(record => <div key={record.id} style={{ paddingTop: 8, display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-        <span style={{ flex: '1 1 140px', minWidth: 0, overflowWrap: 'anywhere' }}>{new Date(record.startedAt).toLocaleString('zh-CN')} · {recordingClock(record.bytes / (record.sampleRate * 2) * 1000)}{!record.finished ? ' · 恢复的录音' : ''}</span>
-        <button type="button" style={button} onClick={() => { void store.upload(record.id) }}>重试上传</button>
-        <button type="button" style={button} onClick={() => { void download(record.id) }}>下载备份</button>
+        <span style={{ flex: '1 1 140px', minWidth: 0, overflowWrap: 'anywhere' }}>{new Date(record.startedAt).toLocaleString(arkmeIntlLocale())} · {recordingClock(record.bytes / (record.sampleRate * 2) * 1000)}{!record.finished ? ' · 恢复的录音' : ''}</span>
+        <button type="button" style={button} onClick={() => { void store.upload(record.id) }}>{tr("重试上传")}</button>
+        <button type="button" style={button} onClick={() => { void download(record.id) }}>{tr("下载备份")}</button>
       </div>)}
     </div>}
-    {!floating && state.acceptedRevision > 0 && onShowTasks && <button type="button" style={{ ...button, marginTop: 8 }} onClick={onShowTasks}>查看处理进度</button>}
+    {!floating && state.acceptedRevision > 0 && onShowTasks && <button type="button" style={{ ...button, marginTop: 8 }} onClick={onShowTasks}>{tr("查看处理进度")}</button>}
   </section>
   // DSH/contact routes hide the conversation layer; the recording controls must remain operable.
   return floating && typeof document !== 'undefined' ? createPortal(content, document.body) : content

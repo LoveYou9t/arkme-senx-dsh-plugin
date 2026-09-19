@@ -119,7 +119,13 @@ export function watchHarnessSurfaceViewport(surface: HTMLElement, frame: HTMLIFr
       attributeFilter: ['style', 'class', 'hidden', 'data-arkme-session-open', 'data-arkme-session-frame'] })
     sync()
   }
-  const position = () => { sync(); native?.dispatchEvent(new native.defaultView!.Event(HARNESS_MENU_POSITION)) }
+  const position = () => {
+    // A queued resize can outlive the iframe document or this observer.
+    const nativeWindow = native?.defaultView
+    if (disposed || !nativeWindow) return
+    sync()
+    native?.dispatchEvent(new nativeWindow.Event(HARNESS_MENU_POSITION))
+  }
   const resize = typeof win.ResizeObserver === 'function' ? new win.ResizeObserver(position) : undefined
   resize?.observe(seat)
   const visibility = new win.MutationObserver(sync)

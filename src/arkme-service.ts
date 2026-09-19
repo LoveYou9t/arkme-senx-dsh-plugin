@@ -1,4 +1,6 @@
 import { stringValue } from './services/service.js'
+import { DayRecapService } from './services/day-recap-service.js'
+import { createManagedAiLlmAdapter } from './managed-ai/adapter.js'
 import { ArkmeDesktopScreenshot } from './desktop-screenshot.js'
 import { RecordEditHistoryService } from './services/record-edit-history-service.js'
 import type { ArkmeRecordEditHistoryPage } from './record-edit-history.js'
@@ -58,6 +60,10 @@ import { ArrangementService } from './services/arrangement-service.js'
 import { AuthService, jiwoScanLoginAvailable } from './services/auth-service.js'
 import { BackgroundSoundMembershipService } from './services/background-sound-membership-service.js'
 import { MembershipService } from './services/membership-service.js'
+import { AccountUsageService } from './services/account-usage-service.js'
+import { AccountUsageDetailsService } from './services/account-usage-details-service.js'
+import type { ArkmeTokenUsageQuery } from './account-usage-details.js'
+import { DataManagementService } from './services/data-management-service.js'
 import { LONG_ARTICLE_IMAGE_MAX_BYTES, resolveLongArticleContent, longArticleImageDestinations } from './long-article-content.js'
 import { BackgroundSoundPreferenceService } from './services/background-sound-preference-service.js'
 import { BotService, type ArkmeBotManageUpdateInput, type ArkmeBotRefPayload } from './services/bot-service.js'
@@ -349,6 +355,7 @@ export class ArkmeService {
   private readonly desktopScreenshot: ArkmeDesktopScreenshot
   private localFileOpener?: (path: string, signal: AbortSignal) => Promise<void>
   private worldVoiceprintInviteVariantIndex = 0
+  private dayRecapService?: DayRecapService
   constructor(
     private readonly config: ArkmeServiceConfig,
     private readonly sessionStore: ArkmeSessionStore,
@@ -572,6 +579,15 @@ export class ArkmeService {
   async fileReceive(mediaRef: string, start = false) { return await this.filesOwner().reception(mediaRef, start) }
   async membershipCurrent(expectedUserId: number) { return await this.membershipOwner.current(expectedUserId) }
   async membershipCatalog(expectedUserId: number) { return await this.membershipOwner.catalog(expectedUserId) }
+  async accountTokenUsage(expectedScope: string) { return await new AccountUsageService(this.runtime).tokens(expectedScope) }
+  async accountStorageUsage(expectedScope: string) { return await new AccountUsageService(this.runtime).storage(expectedScope) }
+  async accountVoiceUsage(expectedScope: string) { return await new AccountUsageService(this.runtime).voice(expectedScope) }
+  async accountTokenUsageSummary(scope: string, query: ArkmeTokenUsageQuery, signal?: AbortSignal) { return await new AccountUsageDetailsService(this.runtime).summary(scope, query, signal) }
+  async accountTokenUsageOperations(scope: string, query: ArkmeTokenUsageQuery, signal?: AbortSignal) { return await new AccountUsageDetailsService(this.runtime).operations(scope, query, signal) }
+  async accountTokenUsageCalls(scope: string, query: ArkmeTokenUsageQuery, signal?: AbortSignal) { return await new AccountUsageDetailsService(this.runtime).calls(scope, query, signal) }
+  async dataDeletedRecords(scope: string, signal?: AbortSignal) { return await new DataManagementService(this.runtime).deleted(scope, signal) }
+  async dataExportPreflight(scope: string, signal?: AbortSignal) { return await new DataManagementService(this.runtime).exportPreflight(scope, signal) }
+  async dataRecoverRecord(scope: string, recordUid: string, version: number) { return await new DataManagementService(this.runtime).recover(scope, recordUid, version) }
   async backgroundSoundPreference(signal?: AbortSignal) { return await this.backgroundSoundPreferenceOwner.preference(signal) }
   async updateBackgroundSoundPreference(enabled: boolean, signal?: AbortSignal, expectedUserId?: number) {
     return await this.backgroundSoundPreferenceOwner.update(enabled, signal, expectedUserId)
@@ -607,6 +623,17 @@ export class ArkmeService {
   }
 
   async resolveManagedAccessCredential(): Promise<SecretValue> { return await resolveManagedAccessCredential(this.runtime) }
+  async generateDayRecap(input: unknown, signal?: AbortSignal) {
+    const assertAccount = async (scope: string) => {
+      const session = await this.runtime.requireSession()
+      if (`${this.config.environment}:${session.userId}` !== scope) throw new ArkmePluginError('day-recap-account-changed', '账号已变化，请重新打开日历', false, 409)
+    }
+    this.dayRecapService ??= new DayRecapService({ assertAccount, adapter: scope => createManagedAiLlmAdapter({
+      intelligentBaseUrl: this.config.intelligentBaseUrl,
+      credentialOwner: { resolveManagedAccessCredential: async () => { await assertAccount(scope); return await this.resolveManagedAccessCredential() } },
+    }) })
+    return await this.dayRecapService.generate(input, signal)
+  }
 
   subscribeChatRealtime(listener: (event: ArkmeChatClientEvent) => void): () => void {
     return this.realtime.subscribeChatRealtime(listener)
@@ -694,6 +721,7 @@ export class ArkmeService {
   async openBotPrivateChat(botRef: string, options: { signal?: AbortSignal } = {}) { return await this.botConversation.open(botRef, options) }
 
   async refreshBotPrivateChat(botRef: string, options: { signal?: AbortSignal } = {}) { return await this.botConversation.refresh(botRef, options) }
+  async readBotPrivateChatHistory(botRef: string, options: { signal?: AbortSignal } = {}) { return await this.botConversation.readHistory(botRef, options) }
 
   async sendBotPrivateChatMessage(botRef: string, content: string, options: { signal?: AbortSignal } = {}) { return await this.botConversation.send(botRef, content, options) }
 
@@ -1026,6 +1054,14 @@ export class ArkmeService {
 
   async refreshProfile(): Promise<ArkmeUserProfileSnapshot> {
     return await this.profile.refreshProfile()
+  }
+
+  async updateProfile(input: import('./types.js').ArkmeProfileUpdate, signal?: AbortSignal): Promise<ArkmeUserProfileSnapshot> {
+    return await this.profile.updateProfile(input, signal)
+  }
+
+  async invitationRewards(scope: string, signal?: AbortSignal): Promise<import('./types.js').ArkmeInvitationRewards> {
+    return await this.profile.invitationRewards(scope, signal)
   }
 
   async arkoProfile(signal?: AbortSignal): Promise<ArkmeArkoProfile> {
@@ -1993,6 +2029,10 @@ export class ArkmeService {
     },
   ): Promise<ArkmeCalendarDayRecordPage> {
     return await this.calendar.dayRecords(options)
+  }
+
+  async calendarRecordLocation(locationRef: string, signal?: AbortSignal) {
+    return await this.calendar.recordLocation(locationRef, signal)
   }
 
   async listWorldRecords(

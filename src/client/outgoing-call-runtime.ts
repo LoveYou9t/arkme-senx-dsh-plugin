@@ -1,3 +1,4 @@
+import { tr } from './locale.js'
 import type {
   ArkmeOutgoingCallFailureCode,
   ArkmeOutgoingCallIntentClaim,
@@ -324,7 +325,7 @@ export class OutgoingCallRuntime {
     }
     if (message.type === 'calling') {
       this.clearCallStartFallback()
-      this.update({ phase: 'calling', statusText: `正在呼叫 ${this.snapshot.displayName}…` })
+      this.update({ phase: 'calling', statusText: tr("正在呼叫 {v0}…", { v0: this.snapshot.displayName }) })
       void this.resolveIntentCalling()
       return
     }
@@ -559,7 +560,7 @@ export class OutgoingCallRuntime {
     this.callSent = true
     this.prepared = undefined
     this.scheduleCallStartFallback()
-    this.update({ statusText: `正在呼叫 ${this.snapshot.displayName}…` })
+    this.update({ statusText: tr("正在呼叫 {v0}…", { v0: this.snapshot.displayName }) })
   }
 
   private async resolvePermissions(request: { requestId: string; camera: boolean; microphone: boolean }): Promise<void> {

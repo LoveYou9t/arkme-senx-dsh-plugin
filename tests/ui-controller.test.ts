@@ -185,6 +185,8 @@ describe('ArkmeUiController', () => {
       chatRevision: 0,
       recordRevision: 0,
       mode: 'world',
+      worldInitialScope: 'all',
+      worldNavigationRevision: 1,
     })
 
     controller.selectSource(source)
@@ -390,6 +392,7 @@ describe('ArkmeUiController', () => {
     controller.showWorld()
     expect(controller.getSnapshot()).toEqual({
       authRevision: 0, chatRevision: 0, recordRevision: 0, mode: 'world',
+      worldInitialScope: 'all', worldNavigationRevision: 1,
     })
     expect(() => { controller.showUserWorld({ userId: 0, displayName: '无效' }) }).toThrow('世界用户 ID')
   })

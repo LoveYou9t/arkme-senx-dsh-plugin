@@ -907,6 +907,9 @@ export function createArkmeHostApi(service: ArkmeService, options: ArkmeHostApiO
       }
       const request = await readRequest(req)
       const params = request.params ?? {}
+      if (request.operation === 'user.profile.update' && (!isLoopback(req.socket.remoteAddress) || origin === undefined)) {
+        throw new ArkmePluginError('origin-required', '资料修改必须从本机设置页面发起', false, 403)
+      }
       if (request.operation === 'desktop.screenshot.capture' || request.operation === 'desktop.screenshot.capability') {
         // This local desktop action must remain unavailable to remote clients,
         // even when other Host operations explicitly allow non-loopback access.
@@ -927,6 +930,9 @@ export function createArkmeHostApi(service: ArkmeService, options: ArkmeHostApiO
       if (['source.record-delete', 'user.arkme-id.set', 'extensions.delete', 'extensions.reviews.create', 'extensions.audit.check', 'extensions.install.start', 'extensions.install.pause', 'extensions.install.resume', 'extensions.enabled.set', 'extensions.metadata.update', 'extensions.share.rotate', 'extensions.preview.delete', 'extensions.preview.reorder', 'extensions.uninstall', 'extensions.restart', 'extensions.client.failure', 'extensions.persistent.invoke', 'extensions.bundle.invoke', 'extensions.mine.publish', 'extensions.quarantine.dismiss', 'extensions.quarantine.reenable', 'remote.renameDesktop', 'message-actions.copy-link', 'message-actions.forward', 'recordings.summary-model-config.set', 'recordings.generate', 'recordings.compare.start', 'recordings.forward', 'recordings.import.retry', 'recordings.import.cancel', 'recordings.import.session.update-start', 'recordings.import.session.update-ownership', 'recordings.import.session.delete', 'recordings.speaker.assign-item', 'openapi.mcp.retry', 'team.create', 'team.join-by-jotmo-id']
         .includes(request.operation) && origin === undefined) {
         throw new ArkmePluginError('origin-required', '该敏感变更必须从当前 DSH 页面发起', false, 403)
+      }
+      if (request.operation === 'calendar.day-recap' && origin === undefined) {
+        throw new ArkmePluginError('origin-required', 'AI 小结必须从当前 DSH 页面确认后发起', false, 403)
       }
       const value = await dispatchArkmeHostOperation(
         service,
@@ -1124,6 +1130,22 @@ export async function dispatchArkmeHostOperation(
     case 'billing.products': return await service.billingProducts()
     case 'membership.current': return await service.membershipCurrent(numberParam(params, 'expectedUserId', Number.NaN))
     case 'membership.catalog': return await service.membershipCatalog(numberParam(params, 'expectedUserId', Number.NaN))
+    case 'account.usage.tokens': return await service.accountTokenUsage(stringParam(params, 'expectedAccountScope'))
+    case 'account.usage.storage': return await service.accountStorageUsage(stringParam(params, 'expectedAccountScope'))
+    case 'account.usage.voice': return await service.accountVoiceUsage(stringParam(params, 'expectedAccountScope'))
+    case 'account.usage.token.summary': return await service.accountTokenUsageSummary(stringParam(params, 'expectedAccountScope'), {
+      monthKey: stringParam(params, 'monthKey'), timezone: stringParam(params, 'timezone'),
+    }, requestSignal)
+    case 'account.usage.token.operations': return await service.accountTokenUsageOperations(stringParam(params, 'expectedAccountScope'), {
+      monthKey: stringParam(params, 'monthKey'), timezone: stringParam(params, 'timezone'), cursor: stringParam(params, 'cursor'),
+    }, requestSignal)
+    case 'account.usage.token.calls': return await service.accountTokenUsageCalls(stringParam(params, 'expectedAccountScope'), {
+      monthKey: stringParam(params, 'monthKey'), timezone: stringParam(params, 'timezone'), cursor: stringParam(params, 'cursor'),
+      operationUid: stringParam(params, 'operationUid'), bizCode: numberParam(params, 'bizCode', -1),
+    }, requestSignal)
+    case 'data.deleted': return await service.dataDeletedRecords(stringParam(params, 'expectedAccountScope'), requestSignal)
+    case 'data.export.preflight': return await service.dataExportPreflight(stringParam(params, 'expectedAccountScope'), requestSignal)
+    case 'data.recover': return await service.dataRecoverRecord(stringParam(params, 'expectedAccountScope'), stringParam(params, 'recordUid'), numberParam(params, 'version', 0))
     case 'billing.order.create': return await service.createBillingOrder({
       productId: billingIdentifierParam(params, 'productId', 'billing-product-id-invalid', '购买套餐无效'),
       paymentMethod: billingPaymentMethodParam(params),
@@ -1206,6 +1228,9 @@ export async function dispatchArkmeHostOperation(
       stringParam(params, 'botRef').trim(), requestSignal === undefined ? {} : { signal: requestSignal },
     )
     case 'bots.private-chat.refresh': return await service.refreshBotPrivateChat(
+      stringParam(params, 'botRef').trim(), requestSignal === undefined ? {} : { signal: requestSignal },
+    )
+    case 'bots.private-chat.history.read': return await service.readBotPrivateChatHistory(
       stringParam(params, 'botRef').trim(), requestSignal === undefined ? {} : { signal: requestSignal },
     )
     case 'bots.private-chat.directory': return await service.listBotPrivateChatDirectory(
@@ -1361,6 +1386,8 @@ export async function dispatchArkmeHostOperation(
       endDate: stringParam(params, 'endDate'),
       ...(stringParam(params, 'timezone') === '' ? {} : { timezone: stringParam(params, 'timezone') }),
     })
+    case 'calendar.day-recap': return await service.generateDayRecap(params, requestSignal)
+    case 'calendar.record-location': return await service.calendarRecordLocation(stringParam(params, 'locationRef'), requestSignal)
     case 'calendar.records': {
       const cursor = cursorParam(params)
       if (params?.cursor !== undefined && (cursor === undefined || !Number.isSafeInteger(cursor.sendAtMillis))) {
@@ -1490,6 +1517,12 @@ export async function dispatchArkmeHostOperation(
     case 'records.retry': return await service.retryPending(stringParam(params, 'recordUid'))
     case 'user.profile': return await service.cachedProfile()
     case 'user.profile.refresh': return await service.refreshProfile()
+    case 'user.profile.update': {
+      const field = stringParam(params, 'field')
+      if (field !== 'nickname' && field !== 'avatar') throw new ArkmePluginError('profile-field-invalid', '资料字段无效', false)
+      return await service.updateProfile({ field, value: stringParam(params, 'value'), expectedAccountScope: stringParam(params, 'expectedAccountScope') }, requestSignal)
+    }
+    case 'account.invitation.get': return await service.invitationRewards(stringParam(params, 'expectedAccountScope'), requestSignal)
     case 'settings.background-sound.get': return await service.backgroundSoundPreference(requestSignal)
     case 'settings.background-sound.update': return await service.updateBackgroundSoundPreference(
       backgroundSoundPreferenceEnabledParam(params),

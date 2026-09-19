@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import { useEffect, useId, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from '@phosphor-icons/react/dist/icons/X'
@@ -19,6 +20,7 @@ export function ArkmeScreenshotCropDialog({ frame, rootRef, onClose, onComplete 
   onClose(): void
   onComplete(blob: Blob): void
 }) {
+  useArkmeLocale()
   const titleId = useId()
   const dialog = useRef<HTMLElement>(null)
   const image = useRef<HTMLImageElement>(null)
@@ -74,10 +76,10 @@ export function ArkmeScreenshotCropDialog({ frame, rootRef, onClose, onComplete 
     onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
     <section ref={dialog} style={styles.dialog} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}>
       <header style={styles.header}>
-        <h2 id={titleId} style={{ margin: 0, fontSize: 17 }}>截图</h2>
-        <button type="button" data-arkme-feedback="neutral" aria-label="关闭截图" style={{ ...styles.button, padding: 6, display: 'grid', border: 0 }} onClick={onClose}><X size={20} /></button>
+        <h2 id={titleId} style={{ margin: 0, fontSize: 17 }}>{tr("截图")}</h2>
+        <button type="button" data-arkme-feedback="neutral" aria-label={tr("关闭截图")} style={{ ...styles.button, padding: 6, display: 'grid', border: 0 }} onClick={onClose}><X size={20} /></button>
       </header>
-      <p style={{ margin: '8px 0 0', fontSize: 13, color: theme.secondary }}>屏幕共享已停止。拖动框选需要的区域，或使用整张图片。</p>
+      <p style={{ margin: '8px 0 0', fontSize: 13, color: theme.secondary }}>{tr("屏幕共享已停止。拖动框选需要的区域，或使用整张图片。")}</p>
       <div style={styles.stage}>
         <div data-arkme-screenshot-image="true" style={{ position: 'relative', width: `min(100%, ${60 * frame.width / frame.height}vh)`, aspectRatio: `${frame.width} / ${frame.height}`, cursor: busy ? 'wait' : 'crosshair', touchAction: 'none', userSelect: 'none', overflow: 'hidden' }}
           onPointerDown={event => {
@@ -103,7 +105,7 @@ export function ArkmeScreenshotCropDialog({ frame, rootRef, onClose, onComplete 
           }}
           onPointerCancel={() => { start.current = undefined; setSelection(undefined) }}
           onLostPointerCapture={() => { start.current = undefined }}>
-          {url && <img ref={image} src={url} alt="待裁剪的截图" draggable={false} onLoad={() => setLoaded(true)} onError={() => setError('截图预览失败，请取消后重新截屏。')}
+          {url && <img ref={image} src={url} alt={tr("待裁剪的截图")} draggable={false} onLoad={() => setLoaded(true)} onError={() => setError('截图预览失败，请取消后重新截屏。')}
             style={{ width: '100%', height: '100%', display: 'block', pointerEvents: 'none' }} />}
           {selection && <div data-arkme-screenshot-selection="true" style={{ position: 'absolute', pointerEvents: 'none', boxSizing: 'border-box',
             left: `${selection.x * 100}%`, top: `${selection.y * 100}%`, width: `${selection.width * 100}%`, height: `${selection.height * 100}%`,
@@ -113,9 +115,9 @@ export function ArkmeScreenshotCropDialog({ frame, rootRef, onClose, onComplete 
       {error && <p role="alert" style={{ color: theme.danger, fontSize: 13 }}>{error}</p>}
       <footer style={styles.footer}>
         <span role="status" style={{ marginRight: 'auto', color: theme.secondary, fontSize: 12 }}>{valid ? `${pixels.width} × ${pixels.height}` : '尚未选择裁剪区域'}</span>
-        <button type="button" data-arkme-feedback="neutral" style={styles.button} onClick={onClose}>取消</button>
-        <button type="button" data-arkme-feedback="neutral" style={styles.button} disabled={!loaded || busy} onClick={() => { void confirm(true) }}>使用整张</button>
-        <button type="button" data-arkme-feedback="primary" style={{ ...styles.button, background: theme.primaryAction, color: theme.onPrimaryAction, opacity: !loaded || busy || !valid ? .45 : 1 }} disabled={!loaded || busy || !valid} onClick={() => { void confirm(false) }}>{busy ? '处理中…' : '完成裁剪'}</button>
+        <button type="button" data-arkme-feedback="neutral" style={styles.button} onClick={onClose}>{tr("取消")}</button>
+        <button type="button" data-arkme-feedback="neutral" style={styles.button} disabled={!loaded || busy} onClick={() => { void confirm(true) }}>{tr("使用整张")}</button>
+        <button type="button" data-arkme-feedback="primary" style={{ ...styles.button, background: theme.primaryAction, color: theme.onPrimaryAction, opacity: !loaded || busy || !valid ? .45 : 1 }} disabled={!loaded || busy || !valid} onClick={() => { void confirm(false) }}>{busy ? tr("处理中…") : '完成裁剪'}</button>
       </footer>
     </section>
   </div>

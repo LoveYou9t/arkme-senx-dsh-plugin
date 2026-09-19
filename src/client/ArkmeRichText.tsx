@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import { Fragment, useState, type ClipboardEvent, type CSSProperties } from 'react'
 import { arkmeEmojiById, type ArkmeEmoji } from './arkme-emoji.js'
 import { arkmeEmojiTextRuns } from '../arkme-emoji-text.js'
@@ -152,7 +153,7 @@ export function ArkmeMentionText({
     const mentionClick = canClickMention ? onMentionClick : undefined
     const memberRef = run.mentionTarget?.kind === 'member' ? run.mentionTarget.memberRef : undefined
     const readIndicator = interactive && memberRef !== undefined && readMentionMembers?.has(memberRef)
-      ? <span role="img" title="已读"
+      ? <span role="img" title={tr("已读")}
         aria-label={`${run.text} 已读`} data-arkme-mention-read="true"
         style={mentionReadBadgeStyle}>
         <ArkmeReadReceiptIcon checked />
@@ -174,7 +175,7 @@ export function ArkmeMentionText({
           key={`${String(index)}:${run.kind}:${run.text}`}
           role="link"
           tabIndex={0}
-          aria-label={`查看 ${run.text}`}
+          aria-label={tr("查看 {v0}", { v0: run.text })}
           style={readIndicator === null ? clickableMentionStyle : { ...clickableMentionStyle, ...readMentionStyle }}
           onClick={event => { event.preventDefault(); event.stopPropagation(); mentionClick(run.text, run.mentionTarget) }}
           onKeyDown={event => {
@@ -190,6 +191,7 @@ export function ArkmeMentionText({
 }
 
 function ArkmeInlineEmoji({ emoji, size }: { emoji: ArkmeEmoji; size: number | string }) {
+  useArkmeLocale()
   const [failed, setFailed] = useState(false)
   return failed ? <span role="img" aria-label={emoji.label} title={emoji.label}>{emoji.unicode}</span> : <img
     src={emoji.assetUrl}

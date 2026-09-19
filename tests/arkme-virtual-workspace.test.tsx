@@ -76,8 +76,8 @@ describe('Arkme conversation directory load state', () => {
   })
 
   it('announces unread counts on the row while keeping avatar badges decorative', () => {
-    expect(workspaceSource).toContain('`${bot.name}，${String(badgeUnreadCount)} 条未读`')
-    expect(workspaceSource).toContain('`${source.displayName}，${String(badgeUnreadCount)} 条未读`')
+    expect(workspaceSource).toContain('tr("{v0}，{v1} 条未读", { v0: bot.name, v1: String(badgeUnreadCount) })')
+    expect(workspaceSource).toContain('tr("{v0}，{v1} 条未读", { v0: source.displayName, v1: String(badgeUnreadCount) })')
     expect(workspaceSource).toContain('<span style={styles.sourceAvatarWrap} aria-hidden>')
   })
 

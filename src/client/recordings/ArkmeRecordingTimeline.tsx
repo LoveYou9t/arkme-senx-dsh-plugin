@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from '../locale.js'
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
 import { CaretDown } from '@phosphor-icons/react/dist/icons/CaretDown'
 import { CaretRight } from '@phosphor-icons/react/dist/icons/CaretRight'
@@ -170,22 +171,22 @@ export function recordingVisibleTimelineItems(
 }
 
 function durationLabel(seconds: number): string {
-  if (seconds >= 3_600) return `${String(seconds / 3_600)}小时`
-  if (seconds >= 60) return `${String(seconds / 60)}分钟`
-  return `${String(seconds)}秒`
+  if (seconds >= 3_600) return tr("{v0}小时", { v0: String(seconds / 3_600) })
+  if (seconds >= 60) return tr("{v0}分钟", { v0: String(seconds / 60) })
+  return tr("{v0}秒", { v0: String(seconds) })
 }
 
 function speakerStatsDurationLabel(durationMillis: number): string {
   const seconds = Math.max(0, Math.round(durationMillis / 1_000))
-  if (seconds < 60) return `${String(seconds)}秒`
+  if (seconds < 60) return tr("{v0}秒", { v0: String(seconds) })
   if (seconds < 3_600) {
     const minutes = Math.floor(seconds / 60)
     const remainingSeconds = seconds % 60
-    return remainingSeconds > 0 ? `${String(minutes)}分${String(remainingSeconds)}秒` : `${String(minutes)}分钟`
+    return remainingSeconds > 0 ? tr("{v0}分{v1}秒", { v0: String(minutes), v1: String(remainingSeconds) }) : tr("{v0}分钟", { v0: String(minutes) })
   }
   const hours = Math.floor(seconds / 3_600)
   const minutes = Math.floor((seconds % 3_600) / 60)
-  return minutes > 0 ? `${String(hours)}小时${String(minutes)}分` : `${String(hours)}小时`
+  return minutes > 0 ? tr("{v0}小时{v1}分", { v0: String(hours), v1: String(minutes) }) : tr("{v0}小时", { v0: String(hours) })
 }
 
 function timeLabel(value: number, showSeconds = true): string {
@@ -278,6 +279,7 @@ export function ArkmeRecordingTimeline({ items: allItems, coverage = [], coverag
   onSelectAtMillis(value: number): void
   onTogglePlayback(): void
 }) {
+  useArkmeLocale()
   // Keep the transcript list available, but its timeline must share the coverage ownership scope.
   const items = useMemo(() => allItems.filter(item => item.recordingBelongsToViewer !== false), [allItems])
   const hasRecording = items.length > 0 || coverage.length > 0
@@ -457,13 +459,13 @@ export function ArkmeRecordingTimeline({ items: allItems, coverage = [], coverag
     </span>
   })
 
-  return <div style={styles.shell} aria-label="真实录音时间轴">
+  return <div style={styles.shell} aria-label={tr("真实录音时间轴")}>
     <div style={styles.overviewRow} data-timeline-layer="overview">
-      <div style={styles.overviewColumn} aria-label="24 小时概览">
+      <div style={styles.overviewColumn} aria-label={tr("24 小时概览")}>
         <div
           style={{ ...styles.overview, ...(!hasRecording ? { cursor: 'default' } : {}) }}
           role="scrollbar"
-          aria-label="24 小时缩略导航"
+          aria-label={tr("24 小时缩略导航")}
           aria-valuemin={bounds.start}
           aria-valuemax={bounds.end}
           aria-valuenow={windowStart}
@@ -498,10 +500,10 @@ export function ArkmeRecordingTimeline({ items: allItems, coverage = [], coverag
         </span>
       </div>
       <span style={styles.zoomControls}>
-        {!followPlayback && <button data-arkme-feedback="neutral" type="button" style={styles.followButton} onClick={() => { setFollowPlayback(true) }}>跟随播放</button>}
-        <button data-arkme-feedback="neutral" type="button" style={{ ...styles.zoomButton, ...(!hasRecording || zoomIndex === 0 ? { opacity: .3, cursor: 'default' } : {}) }} aria-label="缩小" title={hasRecording ? '缩小' : undefined} disabled={!hasRecording || zoomIndex === 0} onClick={() => { zoomTo(zoomIndex - 1) }}><MagnifyingGlassMinus size={16} aria-hidden /></button>
-        <button data-arkme-feedback="neutral" type="button" style={{ ...styles.zoomButton, ...(!hasRecording || zoomIndex === RECORDING_TIMELINE_ZOOM_LEVELS_SECONDS.length - 1 ? { opacity: .3, cursor: 'default' } : {}) }} aria-label="放大" title={hasRecording ? '放大' : undefined} disabled={!hasRecording || zoomIndex === RECORDING_TIMELINE_ZOOM_LEVELS_SECONDS.length - 1} onClick={() => { zoomTo(zoomIndex + 1) }}><MagnifyingGlassPlus size={16} aria-hidden /></button>
-        <span style={{ ...styles.zoomHint, ...(!hasRecording ? { opacity: .3 } : {}) }}>滚轮缩放</span>
+        {!followPlayback && <button data-arkme-feedback="neutral" type="button" style={styles.followButton} onClick={() => { setFollowPlayback(true) }}>{tr("跟随播放")}</button>}
+        <button data-arkme-feedback="neutral" type="button" style={{ ...styles.zoomButton, ...(!hasRecording || zoomIndex === 0 ? { opacity: .3, cursor: 'default' } : {}) }} aria-label={tr("缩小")} title={hasRecording ? tr("缩小") : undefined} disabled={!hasRecording || zoomIndex === 0} onClick={() => { zoomTo(zoomIndex - 1) }}><MagnifyingGlassMinus size={16} aria-hidden /></button>
+        <button data-arkme-feedback="neutral" type="button" style={{ ...styles.zoomButton, ...(!hasRecording || zoomIndex === RECORDING_TIMELINE_ZOOM_LEVELS_SECONDS.length - 1 ? { opacity: .3, cursor: 'default' } : {}) }} aria-label={tr("放大")} title={hasRecording ? tr("放大") : undefined} disabled={!hasRecording || zoomIndex === RECORDING_TIMELINE_ZOOM_LEVELS_SECONDS.length - 1} onClick={() => { zoomTo(zoomIndex + 1) }}><MagnifyingGlassPlus size={16} aria-hidden /></button>
+        <span style={{ ...styles.zoomHint, ...(!hasRecording ? { opacity: .3 } : {}) }}>{tr("滚轮缩放")}</span>
       </span>
     </div>
 
@@ -512,7 +514,7 @@ export function ArkmeRecordingTimeline({ items: allItems, coverage = [], coverag
           style={{ ...styles.playControl, ...(!canPlayAtSelection && !isPlaying && !playbackLoading ? { opacity: .5, cursor: 'default' } : {}) }}
           onClick={onTogglePlayback}
           aria-label={playbackLoading ? '取消录音加载' : isPlaying ? '暂停录音' : '播放录音'}
-          title={playbackLoading ? '加载中，点击取消' : isPlaying ? '暂停' : '播放'}>
+          title={playbackLoading ? '加载中，点击取消' : isPlaying ? '暂停' : tr("播放")}>
           {isPlaying || playbackLoading ? <Pause size={10} weight="fill" aria-hidden /> : <Play size={10} weight="fill" aria-hidden />}
         </button>
       </div>}
@@ -521,7 +523,7 @@ export function ArkmeRecordingTimeline({ items: allItems, coverage = [], coverag
         tabIndex={hasRecording ? 0 : -1}
         role="slider"
         aria-disabled={!hasRecording}
-        aria-label="详细时间轴，可拖拽平移，滚轮缩放"
+        aria-label={tr("详细时间轴，可拖拽平移，滚轮缩放")}
         aria-valuemin={bounds.start}
         aria-valuemax={bounds.end}
         aria-valuenow={playheadMillis ?? windowStart}
@@ -586,24 +588,24 @@ export function ArkmeRecordingTimeline({ items: allItems, coverage = [], coverag
       </span>
     </div>
 
-    <div aria-label="录音覆盖图例" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 16px', fontSize: 11, color: desktop.secondary, minHeight: 20 }}>
+    <div aria-label={tr("录音覆盖图例")} style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '6px 16px', fontSize: 11, color: desktop.secondary, minHeight: 20 }}>
       {[[desktop.surface, !loading && coverageState === 'ready' && (hasRecording || showEmptyState) ? '无录音' : '无已知录音'], [desktop.coverage, '有录音'], [desktop.timelineBlue, '已识别人声']].map(([color, label]) => <span key={label} style={{ display: 'inline-flex', gap: 5, alignItems: 'center' }}><i aria-hidden style={{ width: 14, height: 7, borderRadius: 3, background: color, border: `1px solid ${desktop.border}` }} />{label}</span>)}
       {coverageState !== 'ready' && <span role="status">{coverageState === 'error' ? '云端录音范围读取失败' : '部分录音范围待确认'}</span>}
-      {coverage.some(range => range.status === 'processing' || range.status === 'submitted') && <span role="status">录音处理中，人声结果待更新</span>}
+      {coverage.some(range => range.status === 'processing' || range.status === 'submitted') && <span role="status">{tr("录音处理中，人声结果待更新")}</span>}
     </div>
-    {loading ? <span style={styles.loadingControl} data-timeline-layer="loading" aria-label="正在读取录音" /> : showEmptyState ? <span style={styles.emptyControl} data-timeline-layer="empty">
+    {loading ? <span style={styles.loadingControl} data-timeline-layer="loading" aria-label={tr("正在读取录音")} /> : showEmptyState ? <span style={styles.emptyControl} data-timeline-layer="empty">
       <span style={styles.emptyIndicator} aria-hidden />
-      <span>无录音</span>
-      <button data-arkme-hover="none" type="button" style={{ ...styles.importButton, ...(onImportAudio === undefined ? { cursor: 'default', opacity: .3 } : {}) }} disabled={onImportAudio === undefined} onClick={onImportAudio}>导入音频<CaretRight size={8} aria-hidden /></button>
+      <span>{tr("无录音")}</span>
+      <button data-arkme-hover="none" type="button" style={{ ...styles.importButton, ...(onImportAudio === undefined ? { cursor: 'default', opacity: .3 } : {}) }} disabled={onImportAudio === undefined} onClick={onImportAudio}>{tr("导入音频")}<CaretRight size={8} aria-hidden /></button>
     </span> : zoomIndex > 0 && visibleSpeakers.length > 0 ? <>
-      {legendOpen && <button type="button" tabIndex={-1} aria-label="关闭当前窗口说话人统计" style={styles.legendBackdrop} onClick={() => { if (legendRef.current !== null) legendRef.current.open = false; setLegendOpen(false) }} />}
+      {legendOpen && <button type="button" tabIndex={-1} aria-label={tr("关闭当前窗口说话人统计")} style={styles.legendBackdrop} onClick={() => { if (legendRef.current !== null) legendRef.current.open = false; setLegendOpen(false) }} />}
       <details ref={legendRef} open={legendOpen} style={styles.legend} data-timeline-layer="speakers" onToggle={event => { setLegendOpen(event.currentTarget.open) }}>
-      <summary style={styles.legendSummary} aria-label="当前窗口说话人图例">
+      <summary style={styles.legendSummary} aria-label={tr("当前窗口说话人图例")}>
         <span style={styles.legendItems}>
-          {visibleSpeakers.slice(0, 3).map(speaker => <button data-arkme-feedback="neutral" type="button" key={speaker.key} aria-label={`编辑说话人 ${speaker.label}`} style={styles.legendItem} onClick={event => { editSpeaker(event, speaker.items[0]!) }}>
+          {visibleSpeakers.slice(0, 3).map(speaker => <button data-arkme-feedback="neutral" type="button" key={speaker.key} aria-label={tr("编辑说话人 {v0}", { v0: speaker.label })} style={styles.legendItem} onClick={event => { editSpeaker(event, speaker.items[0]!) }}>
             {speaker.avatarRef === undefined
               ? <span aria-hidden style={{ ...styles.legendDot, background: recordingSpeakerColor(speaker.colorIndex) }} />
-              : <ArkmeUserAvatar avatarRef={speaker.avatarRef} size={12} label={`${speaker.label}头像`} />}
+              : <ArkmeUserAvatar avatarRef={speaker.avatarRef} size={12} label={tr("{v0}头像", { v0: speaker.label })} />}
             <span style={{ ...styles.legendName, ...(speaker.avatarRef === undefined ? {} : { color: recordingSpeakerColor(speaker.colorIndex) }) }}>{speaker.label}</span>
           </button>)}
         </span>
@@ -619,7 +621,7 @@ export function ArkmeRecordingTimeline({ items: allItems, coverage = [], coverag
               <span style={styles.legendPanelIdentity}>
                 {speaker.avatarRef === undefined
                   ? <span aria-hidden style={{ ...styles.legendDot, background: recordingSpeakerColor(speaker.colorIndex) }} />
-                  : <ArkmeUserAvatar avatarRef={speaker.avatarRef} size={12} label={`${speaker.label}头像`} />}
+                  : <ArkmeUserAvatar avatarRef={speaker.avatarRef} size={12} label={tr("{v0}头像", { v0: speaker.label })} />}
                 <span style={styles.legendName}>{speaker.label}</span>
               </span>
               <span style={styles.legendPanelTimeline} aria-hidden>
@@ -631,11 +633,11 @@ export function ArkmeRecordingTimeline({ items: allItems, coverage = [], coverag
               <span style={styles.legendMetric}>{percentage.toFixed(1)}%</span>
               </span>
               <span style={styles.legendPanelMeta}>
-                <span style={styles.legendMetric}>占比 {percentage.toFixed(1)}%</span>
+                <span style={styles.legendMetric}>{tr("占比")} {percentage.toFixed(1)}%</span>
                 <span style={{ ...styles.legendMetric, margin: '0 8px' }}>•</span>
-                <span style={styles.legendMetric}>{speaker.mergedSegments.length}个片段</span>
+                <span style={styles.legendMetric}>{speaker.mergedSegments.length}{tr("个片段")}</span>
                 <span style={{ ...styles.legendMetric, margin: '0 8px' }}>•</span>
-                <span style={styles.legendMetric}>总时长: {speakerStatsDurationLabel(speaker.durationMillis)}</span>
+                <span style={styles.legendMetric}>{tr("总时长:")} {speakerStatsDurationLabel(speaker.durationMillis)}</span>
               </span>
             </span>
           })}

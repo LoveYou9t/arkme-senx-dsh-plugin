@@ -372,6 +372,9 @@ export type {
 
 const DEFAULT_ROUTE = '/arkme-self/api'
 export type { ArkmeMembership, ArkmeMembershipCatalog, ArkmeMembershipProduct } from '../types.js'
+export type { ArkmeAccountStorageUsage, ArkmeAccountTokenUsage, ArkmeAccountVoiceUsage, ArkmeStorageBreakdown, ArkmeStorageCategory } from '../account-usage.js'
+export type { ArkmeUsageTokens, ArkmeTokenUsageSummary, ArkmeTokenUsageOperation, ArkmeTokenUsageCall, ArkmeTokenUsagePage, ArkmeTokenUsageQuery } from '../account-usage-details.js'
+export type { ArkmeDeletedRecord, ArkmeDeletedRecordPage, ArkmeExportPreflight } from '../data-management.js'
 
 function expectedUserIdHeaders(expectedUserId: number | undefined): Record<string, string> {
   if (expectedUserId === undefined) return {}
@@ -2039,6 +2042,11 @@ export class ArkmeSdk {
       ...(options.limit === undefined ? {} : { limit: options.limit }),
       ...(options.cursor === undefined ? {} : { cursor: options.cursor }),
     }, options.signal)
+  }
+
+  /** Read a device-location fact using a short-lived capability from the personal calendar. */
+  async calendarRecordLocation(locationRef: string, signal?: AbortSignal): Promise<import('../types.js').ArkmeCalendarRecordLocation> {
+    return await this.call('calendar.record-location', { locationRef }, signal)
   }
 
   /** Service-owned daily chat counts and exact first-message anchors, shared with Flutter. */

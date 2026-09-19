@@ -1,3 +1,4 @@
+import { tr } from './locale.js'
 import type { CSSProperties } from 'react'
 
 const clipStyle: CSSProperties = {
@@ -11,7 +12,7 @@ const cornerStyle: CSSProperties = {
 }
 
 export function ArkmePinnedCorner() {
-  return <span role="img" aria-label="已置顶" style={clipStyle}>
+  return <span role="img" aria-label={tr("已置顶")} style={clipStyle}>
     {/* A concave circular edge echoes the 38px avatar. Ending at 9px keeps
         the corner above the centered 33px selection marker in a 58px row. */}
     <svg aria-hidden focusable="false" viewBox="0 0 10 9" style={cornerStyle}>

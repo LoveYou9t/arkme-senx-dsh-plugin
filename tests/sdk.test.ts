@@ -19,6 +19,15 @@ function success(value: unknown): Response {
 afterEach(() => { vi.useRealTimers() })
 
 describe('Arkme SDK', () => {
+  it('reads calendar location using only the issued reference', async () => {
+    const calls: unknown[] = []
+    const sdk = createArkmeSdk({ fetchImpl: async (_input, init) => {
+      calls.push(JSON.parse(String(init?.body)))
+      return success({ recordUid: 'a', access: 'available' })
+    } })
+    expect(await sdk.calendarRecordLocation('opaque', new AbortController().signal)).toEqual({ recordUid: 'a', access: 'available' })
+    expect(calls).toEqual([{ operation: 'calendar.record-location', params: { locationRef: 'opaque' } }])
+  })
   it('exposes the paginated conversation-name read with cancellation', async () => {
     const fetcher = vi.fn(async () => success({ items: [], hasMore: false }))
     const sdk = createArkmeSdk({ fetchImpl: fetcher })

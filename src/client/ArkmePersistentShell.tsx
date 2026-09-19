@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import {
   useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore,
   type ReactNode, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent,
@@ -116,6 +117,7 @@ export function resolvePersistentSidebarWidth(
 
 /** Permanent browser-side lifecycles that used to be owned by the optional DSH footer entry. */
 export function ArkmePersistentClientRuntime() {
+  useArkmeLocale()
   const ui = useSyncExternalStore(arkmeUi.subscribe, arkmeUi.getViewSnapshot, arkmeUi.getViewSnapshot)
   const authState = useSyncExternalStore(arkmeAuthStore.subscribe, arkmeAuthStore.getSnapshot, arkmeAuthStore.getSnapshot)
   const auth = authState.auth
@@ -176,6 +178,7 @@ export type ArkmePersistentSidebarProps = PropsRuntime<'sidebar'>
 
 /** Only the two directory panels are retained; account keys delimit their lifetime. */
 function PersistentDirectoryPanel({ active, mode, children }: { active: boolean; mode: 'contacts' | 'conversations'; children: ReactNode }) {
+  useArkmeLocale()
   const [visited, setVisited] = useState(active)
   useEffect(() => { if (active) setVisited(true) }, [active])
   if (!active && !visited) return null
@@ -191,6 +194,7 @@ export function ArkmePersistentSidebar({
   collapsed, width, useSessions, renderSlot, closeDetails,
   searchDshMessages = async () => ({ items: [], hasMore: false }), openDshSession = () => undefined,
 }: ArkmePersistentSidebarProps) {
+  useArkmeLocale()
   const sessionState = useSessions(state => state)
   const directorySnapshot = useSyncExternalStore(arkmeChatDirectory.subscribe, arkmeChatDirectory.getSnapshot, arkmeChatDirectory.getSnapshot)
   const ui = useSyncExternalStore(arkmeUi.subscribe, arkmeUi.getViewSnapshot, arkmeUi.getViewSnapshot)
@@ -357,7 +361,7 @@ export function ArkmePersistentSidebar({
   const sidebarResizeHandle = <div
     data-arkme-owned="persistent-sidebar-resize-handle"
     role="separator"
-    aria-label="调整对话列表宽度"
+    aria-label={tr("调整对话列表宽度")}
     aria-orientation="vertical"
     aria-valuemin={ARKME_PERSISTENT_DIRECTORY_MIN_WIDTH}
     aria-valuemax={ARKME_PERSISTENT_DIRECTORY_MAX_WIDTH}
@@ -383,7 +387,7 @@ export function ArkmePersistentSidebar({
     data-arkme-sidebar-width={renderedSidebarWidth}
     data-arkme-directory-width={renderedDirectoryWidth}
     style={styles.sidebar}
-    aria-label="Arkme 受限工作区导航"
+    aria-label={tr("Arkme 受限工作区导航")}
   >
     {sidebarSizingStyle}
     <ArkmeProductNavigation compact={false} hosted taskExpanded locked />
@@ -411,7 +415,7 @@ export function ArkmePersistentSidebar({
     data-arkme-login-mode="false"
     {...(contactsMode ? { 'data-arkme-contacts-mobile-view': scopedContacts.selection.kind !== 'none' ? 'content' : 'directory' } : {})}
     style={styles.sidebar}
-    aria-label="Arkme 功能导航栏"
+    aria-label={tr("Arkme 功能导航栏")}
   >
     {directoryVisible && (!contactsMode || !collapsed) && sidebarSizingStyle}
     <ArkmeProductNavigation
@@ -500,6 +504,7 @@ export type ArkmePersistentWorkspaceProps = PropsRuntime<'conversation'>
 export function ArkmePersistentWorkspace({
   sessionId, closeDetails, t,
 }: ArkmePersistentWorkspaceProps) {
+  useArkmeLocale()
   const ui = useSyncExternalStore(arkmeUi.subscribe, arkmeUi.getViewSnapshot, arkmeUi.getViewSnapshot)
   const authState = useSyncExternalStore(arkmeAuthStore.subscribe, arkmeAuthStore.getSnapshot, arkmeAuthStore.getSnapshot)
   const contacts = useSyncExternalStore(arkmeContactsTab.subscribe, arkmeContactsTab.getSnapshot, arkmeContactsTab.getSnapshot)
@@ -523,7 +528,7 @@ export function ArkmePersistentWorkspace({
     data-arkme-notification-activation-revision={ui.notificationActivationRevision ?? 0}
     {...(contactsMode ? { 'data-arkme-contacts-mobile-view': scopedContacts.selection.kind !== 'none' ? 'content' : 'directory' } : {})}
     style={styles.workspace}
-    aria-label="Arkme 主界面"
+    aria-label={tr("Arkme 主界面")}
   >
     <ArkmePersistentClientRuntime />
     <ArkmeExtensionRecoveryNotice />
@@ -556,7 +561,7 @@ export function ArkmePersistentWorkspace({
         />
       </div>}
     {contactsMode && <div className="arkme-directory-detail-pane" data-arkme-contacts-workspace style={styles.contactsLayer}>
-      {scopedContacts.selection.kind !== 'none' && <button type="button" className="arkme-directory-mobile-back" onClick={() => { arkmeContactsTab.clear() }}>返回联系人目录</button>}
+      {scopedContacts.selection.kind !== 'none' && <button type="button" className="arkme-directory-mobile-back" onClick={() => { arkmeContactsTab.clear() }}>{tr("返回联系人目录")}</button>}
       <DirectoryDetailPane
         onBotActivated={bot => {
           const current = arkmeContactsTab.getSnapshot()
@@ -592,6 +597,7 @@ export type ArkmePersistentDetailsProps = PropsRuntime<'details'> & { closeDetai
 
 /** Claim the details seat as an empty Arkme surface so the official DSH panel is never visible. */
 export function ArkmePersistentDetails({ closeDetails }: ArkmePersistentDetailsProps) {
+  useArkmeLocale()
   useLayoutEffect(() => { closeDetails() }, [closeDetails])
   return <aside data-arkme-owned="persistent-details" style={styles.details} aria-hidden />
 }

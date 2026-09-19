@@ -1,3 +1,4 @@
+import { tr } from './locale.js'
 import { useEffect, useRef, useState, type RefObject } from 'react'
 import { arkmeTheme } from './arkme-theme.js'
 
@@ -55,9 +56,9 @@ export function useResizableCallBrowser(surface: RefObject<HTMLElement>) {
   }
   return {
     width,
-    handle: <div role="separator" aria-label="调整通话记录宽度" aria-orientation="vertical"
+    handle: <div role="separator" aria-label={tr("调整通话记录宽度")} aria-orientation="vertical"
       aria-valuemin={Math.round(bounds.min)} aria-valuemax={Math.round(bounds.max)} aria-valuenow={width}
-      tabIndex={0} title="左右拖动调整通话记录宽度，双击恢复默认宽度"
+      tabIndex={0} title={tr("左右拖动调整通话记录宽度，双击恢复默认宽度")}
       style={{ position: 'relative', width: 3, zIndex: 3, cursor: 'ew-resize', touchAction: 'none', outline: 'none' }}
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}

@@ -1,10 +1,10 @@
-import { readFileSync } from 'node:fs'
+import { readUiSource } from './helpers/ui-source.js'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 describe('group member add UI', () => {
   it('matches the pre-release collaborator list and invite flow', () => {
-    const source = readFileSync(join(process.cwd(), 'src/client/ArkmeGroupChatControls.tsx'), 'utf8')
+    const source = readUiSource(join(process.cwd(), 'src/client/ArkmeGroupChatControls.tsx'), 'utf8')
     expect(source).toContain("callArkme<ArkmeGroupMemberCandidateList>('group.member-candidates'")
     expect(source).toContain("sourceRef: props.source.sourceRef, query: '', limit: 50")
     expect(source).toContain('setSnapshot(undefined)')
@@ -49,7 +49,7 @@ describe('group member add UI', () => {
     expect(source).toContain('onPointerDown={event => { event.preventDefault(); props.onClose() }}')
     expect(source).toContain("window.addEventListener('keydown', dismissOnEscape)")
 
-    const mentionRowSource = readFileSync(join(process.cwd(), 'src/client/ArkmeMentionSuggestionRow.tsx'), 'utf8')
+    const mentionRowSource = readUiSource(join(process.cwd(), 'src/client/ArkmeMentionSuggestionRow.tsx'), 'utf8')
     expect(mentionRowSource).toContain('candidate.avatarRef === undefined')
     expect(mentionRowSource).toContain('<RobotIcon size={14} weight="fill" />')
     expect(mentionRowSource).toContain('image_at_all_member_light.png')
