@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import {
   IconCheckOutline16, IconEllipsisOutline16, IconPersonalizationOutline16, Menu, Tooltip, type MenuEntry,
 } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -57,7 +58,7 @@ export function ArkmeDshRowActionsMenu(props: {
     open={props.open} label={props.label} items={props.items}
     onSelect={props.onSelect} onClose={props.onClose} portal closeOnPointerLeave
     anchor={<button type="button" className="arkme-dsh-row-actions-button"
-      title="主题操作" aria-label={props.label} aria-haspopup="menu" aria-expanded={props.open}
+      title={tr("主题操作")} aria-label={props.label} aria-haspopup="menu" aria-expanded={props.open}
       onClick={event => { event.stopPropagation(); props.onToggle() }}
     ><IconEllipsisOutline16 /></button>}
   />
@@ -159,6 +160,7 @@ export function ArkmeActionMenu(props: {
   /** Hover menus dismiss immediately outside the trigger, menu and crossing gap. */
   hoverAnchor?: HTMLElement | undefined
 }) {
+  useArkmeLocale()
   const open = props.open ?? true
   const root = useRef<HTMLSpanElement>(null)
   const menu = useRef<HTMLElement | null>(null)
@@ -329,7 +331,7 @@ export function ArkmeDshViewOptionsMenu(props: {
 }) {
   return <ArkmeDshMenu
     open={props.open}
-    label="视图选项"
+    label={tr("视图选项")}
     align="end"
     dense
     portal
@@ -338,11 +340,11 @@ export function ArkmeDshViewOptionsMenu(props: {
     {...(props.selectedIds === undefined ? {} : { selectedIds: props.selectedIds })}
     onSelect={props.onSelect}
     onClose={props.onClose}
-    anchor={<Tooltip label="视图选项" side="bottom" delayMs={500}>
+    anchor={<Tooltip label={tr("视图选项")} side="bottom" delayMs={500}>
       <button
         type="button"
         className="arkme-dsh-view-options-button"
-        aria-label={props.ariaLabel ?? '视图选项'}
+        aria-label={props.ariaLabel ?? tr("视图选项")}
         aria-haspopup="menu"
         aria-expanded={props.open}
         data-arkme-self-topic-sort-trigger={props.dataArkmeSelfTopicSortTrigger}

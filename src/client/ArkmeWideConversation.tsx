@@ -1,3 +1,4 @@
+import { tr } from './locale.js'
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react'
 import { ARKME_WIDE_CONVERSATION_MIN } from '../harness-conversation-layout-contract.js'
 import { loadHarnessConversationLayout, type HarnessConversationLayout, type NativeRailItem } from './harness-conversation-layout.js'
@@ -50,9 +51,9 @@ export function ConversationRailPreview({ speaker, text, response = false }: {
   response?: boolean
 }) {
   return <span data-arkme-rail-preview={response ? 'response' : 'prompt'} style={{ display: 'flex', alignItems: response ? 'flex-start' : 'center', gap: 8, minWidth: 0 }}>
-    <span role="img" aria-label={`${speaker.name}的头像`} style={{ display: 'flex', flex: 'none', width: 28, height: 28 }}>
+    <span role="img" aria-label={tr("{v0}的头像", { v0: speaker.name })} style={{ display: 'flex', flex: 'none', width: 28, height: 28 }}>
       {speaker.kind === 'arko' ? <ArkmeArkoAvatar size={28} /> : <ArkmeUserAvatar
-        avatarRef={speaker.avatarRef} senderKind={speaker.kind} label={`${speaker.name}的头像`} size={28} />}
+        avatarRef={speaker.avatarRef} senderKind={speaker.kind} label={tr("{v0}的头像", { v0: speaker.name })} size={28} />}
     </span>
     <span style={{ minWidth: 0, flex: 1, display: '-webkit-box', WebkitBoxOrient: 'vertical', WebkitLineClamp: response ? 2 : 1, overflow: 'hidden', overflowWrap: 'anywhere' }}>{text}</span>
   </span>
@@ -60,7 +61,7 @@ export function ConversationRailPreview({ speaker, text, response = false }: {
 
 export function conversationRailPreviewItems(items: readonly ConversationRailItem[]): NativeRailItem<ReactNode>[] {
   return items.map(item => ({ ...item,
-    prompt: <ConversationRailPreview speaker={item.speaker} text={item.prompt || `第 ${item.turn} 条消息`} />,
+    prompt: <ConversationRailPreview speaker={item.speaker} text={item.prompt || tr("第 {v0} 条消息", { v0: item.turn })} />,
     response: item.response === '' ? '' : <ConversationRailPreview speaker={item.responseSpeaker ?? item.speaker} text={item.response} response />,
   }))
 }

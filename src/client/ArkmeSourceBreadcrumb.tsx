@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale, arkmeIntlLocale } from './locale.js'
 import { arkmeSourceAllowsUserWrite } from '../topic-policy.js'
 import { Button, IconEditOutline16, IconNewChatOutline16, IconTrashOutline16, type MenuEntry } from '@deepseek-ai/dsh-client-ui-primitives'
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
@@ -312,7 +313,7 @@ export function arkmeSelfTopicSelectionLabel(
   sources: readonly ArkmeSourceItem[] = [],
 ): string {
   const path = arkmeSelfTopicSelectionPath(selectedSource, sources)
-  return path.length === 0 ? '全部' : path.join(' / ')
+  return path.length === 0 ? tr("全部") : path.join(' / ')
 }
 
 function topicDirectRecordCount(source: ArkmeSourceItem | undefined): number {
@@ -320,15 +321,15 @@ function topicDirectRecordCount(source: ArkmeSourceItem | undefined): number {
 }
 
 function topicCountLabel(count: number | undefined): string {
-  return count === undefined ? '正在加载数量' : count.toLocaleString('zh-CN')
+  return count === undefined ? tr("正在加载数量") : count.toLocaleString(arkmeIntlLocale())
 }
 
 function ArkmeTopicCount({ count, error, hidden }: { count: number | undefined; error?: string | undefined; hidden?: boolean }) {
   return <span style={{ ...styles.topicCount, ...(hidden ? styles.topicCountHidden : {}) }} data-arkme-topic-count=""
-    aria-label={count === undefined ? error ? '数量暂不可用' : '正在加载数量' : `${topicCountLabel(count)} 条快记或消息`}
+    aria-label={count === undefined ? error ? '数量暂不可用' : tr("正在加载数量") : tr("{v0} 条快记或消息", { v0: topicCountLabel(count) })}
     title={count === undefined && error ? '数量加载失败，请重试' : undefined}>
     {count !== undefined ? topicCountLabel(count) : error ? '—'
-      : <span role="status" aria-label="正在加载数量"><ArkmeTopicLoadingIcon /></span>}
+      : <span role="status" aria-label={tr("正在加载数量")}><ArkmeTopicLoadingIcon /></span>}
   </span>
 }
 
@@ -363,6 +364,7 @@ export function ArkmeSourceBreadcrumb({
   activeDissolve?: ArkmeTopicDissolveTask
   assignment?: ArkmeTopicAssignmentPresentation
 }) {
+  useArkmeLocale()
   const [manualOpen, setManualOpen] = useState(false)
   const [externalRequest, setExternalRequest] = useState<SelfTopicMenuRequest>()
   const open = assignment ? !assignment.hidden : tourOpen ?? (manualOpen || externalRequest !== undefined)
@@ -440,9 +442,9 @@ export function ArkmeSourceBreadcrumb({
   const activeDissolveRunning = activeDissolve !== undefined
     && activeDissolve.stage !== 'completed' && activeDissolve.stage !== 'failed'
   const activeDissolveLabel = activeDissolve?.stage === 'reading'
-    ? `读取 ${String(activeDissolve.completedRecordCount)}/${String(activeDissolve.totalRecordCount)}`
+    ? tr("读取 {v0}/{v1}", { v0: String(activeDissolve.completedRecordCount), v1: String(activeDissolve.totalRecordCount) })
     : activeDissolve?.stage === 'migrating'
-      ? `解散中 ${String(activeDissolve.completedRecordCount)}/${String(activeDissolve.totalRecordCount)}`
+      ? tr("解散中 {v0}/{v1}", { v0: String(activeDissolve.completedRecordCount), v1: String(activeDissolve.totalRecordCount) })
       : '解散中'
   const openActiveDissolve = () => {
     if (activeDissolveTopic === undefined || activeDissolve === undefined) return
@@ -832,14 +834,14 @@ export function ArkmeSourceBreadcrumb({
     }).finally(() => { setTopicMutationSubmitting(false) })
   }
 
-  return <nav aria-label="发给自己主题" style={trigger === 'visible' ? styles.breadcrumb : {
+  return <nav aria-label={tr("发给自己主题")} style={trigger === 'visible' ? styles.breadcrumb : {
     ...styles.breadcrumb, position: 'absolute', width: 0, height: 0, minWidth: 0, overflow: 'visible',
   }}>
     <style>{CONVERSATION_SELECTOR_CSS}</style>
-    {trigger === 'visible' && <><span data-arkme-self-topic-root="true" style={styles.fixedTitle}>发给自己</span>
+    {trigger === 'visible' && <><span data-arkme-self-topic-root="true" style={styles.fixedTitle}>{tr("发给自己")}</span>
     <button
       ref={selectorRef}
-      type="button" aria-label="选择主题" aria-haspopup="tree" aria-expanded={open}
+      type="button" aria-label={tr("选择主题")} aria-haspopup="tree" aria-expanded={open}
       data-arkme-self-topic-selector="true" title={label}
       data-arkme-conversation-selector=""
       style={styles.selector}
@@ -852,7 +854,7 @@ export function ArkmeSourceBreadcrumb({
       }}
     >
       <span style={styles.selectorText}>
-        {compactSelectedPath.length === 0 ? '全部' : compactSelectedPath.map((segment, index) => <Fragment key={`${String(index)}:${segment}`}>
+        {compactSelectedPath.length === 0 ? tr("全部") : compactSelectedPath.map((segment, index) => <Fragment key={`${String(index)}:${segment}`}>
           {index > 0 && <span aria-hidden style={styles.selectorPathSeparator}>/</span>}
           {segment === '…'
             ? <span aria-hidden style={styles.selectorPathEllipsis}>…</span>
@@ -864,10 +866,10 @@ export function ArkmeSourceBreadcrumb({
       </svg></span>
     </button></>}
     {trigger === 'visible' && activeDissolveRunning && activeDissolveTopic !== undefined && <button data-arkme-feedback="neutral"
-      type="button" aria-label="查看解散进度" style={styles.dissolveProgressTrigger} onClick={openActiveDissolve}
+      type="button" aria-label={tr("查看解散进度")} style={styles.dissolveProgressTrigger} onClick={openActiveDissolve}
     ><span aria-hidden style={styles.dissolveProgressIcon}><ArkmeTopicLoadingIcon /></span>{activeDissolveLabel}</button>}
     {open && <ArkmeSelfTopicMenuPortal external={externalRequest !== undefined || assignment !== undefined}><div ref={menuRef}
-      role={assignment ? 'dialog' : 'tree'} aria-label={assignment ? undefined : '主题'}
+      role={assignment ? 'dialog' : 'tree'} aria-label={assignment ? undefined : tr("主题")}
       aria-labelledby={assignment ? 'arkme-record-topic-assignment-title' : undefined} aria-busy={assignment?.busy || undefined}
       data-arkme-self-topic-menu style={{ ...styles.menu,
       ...(externalRequest !== undefined || assignment !== undefined ? {
@@ -878,13 +880,13 @@ export function ArkmeSourceBreadcrumb({
     }} onPointerLeave={event => {
       externalRequestRef.current?.checkPointer(event.relatedTarget, { x: event.clientX, y: event.clientY })
     }}>
-      {assignment && <div style={styles.pickerHeader}><span id="arkme-record-topic-assignment-title" style={{ flex: 1 }}>指定主题 · 已选 {assignment.count} 条</span>
-        <button data-arkme-feedback="neutral" type="button" aria-label="关闭指定主题" disabled={assignment.busy} style={styles.topicToggle} onClick={assignment.onClose}>×</button>
+      {assignment && <div style={styles.pickerHeader}><span id="arkme-record-topic-assignment-title" style={{ flex: 1 }}>{tr("指定主题 · 已选")} {assignment.count} {tr("条")}</span>
+        <button data-arkme-feedback="neutral" type="button" aria-label={tr("关闭指定主题")} disabled={assignment.busy} style={styles.topicToggle} onClick={assignment.onClose}>×</button>
       </div>}
-      {!assignment && selectedPath.length > 0 && <div aria-label="当前主题路径" title={label} style={styles.currentPath}>当前：{label}</div>}
+      {!assignment && selectedPath.length > 0 && <div aria-label={tr("当前主题路径")} title={label} style={styles.currentPath}>{tr("当前：")}{label}</div>}
       <label style={styles.search}>
         <svg aria-hidden width="15" height="15" viewBox="0 0 20 20" fill="none"><circle cx="8.5" cy="8.5" r="5.5" stroke="currentColor" strokeWidth="1.5" /><path d="m13 13 4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
-        <input type="search" aria-label="搜索主题名" placeholder="搜索主题名…" value={query} disabled={assignment?.disabled}
+        <input type="search" aria-label={tr("搜索主题名")} placeholder={tr("搜索主题名…")} value={query} disabled={assignment?.disabled}
           style={styles.searchInput} onChange={event => {
             setQuery(event.currentTarget.value); setSearchCollapsed(new Set()); pendingSelectedFocusRef.current = false
             menuListRef.current?.scrollTo({ top: 0 })
@@ -909,7 +911,7 @@ export function ArkmeSourceBreadcrumb({
       >
       {!assignment && !searching && <button type="button" role="treeitem" aria-level={1} aria-selected={selectedRef === undefined}
         style={{ ...styles.option, ...styles.aggregateOption, ...(selectedRef === undefined ? styles.optionSelected : {}) }} onClick={selectAggregate}
-      ><span aria-hidden style={styles.topicSpacer} /><span style={styles.optionLabel}>全部</span><ArkmeTopicCount count={allTopicsCount} error={error} /></button>}
+      ><span aria-hidden style={styles.topicSpacer} /><span style={styles.optionLabel}>{tr("全部")}</span><ArkmeTopicCount count={allTopicsCount} error={error} /></button>}
       {rows.map(row => {
         const isSelected = selectedRef === row.source.sourceRef
         const isHovered = hoveredSourceRef === row.source.sourceRef
@@ -992,21 +994,21 @@ export function ArkmeSourceBreadcrumb({
               ...(rowDropPlan.before ? { top: -1 } : { bottom: -1 }),
             }}
           />}
-          {rowDropPlan?.into === true && <span aria-hidden data-arkme-self-topic-drop-into="true" style={styles.topicDropIntoBadge}>移入</span>}
+          {rowDropPlan?.into === true && <span aria-hidden data-arkme-self-topic-drop-into="true" style={styles.topicDropIntoBadge}>{tr("移入")}</span>}
           {row.hasChildren ? <button data-arkme-feedback="neutral"
-            type="button" aria-label={`${row.expanded ? '收起' : '展开'}${row.source.displayName}`}
+            type="button" aria-label={`${row.expanded ? tr("收起") : tr("展开")}${row.source.displayName}`}
             title={row.expanded ? '收起子主题' : '展开子主题'} style={styles.topicToggle} disabled={assignment?.disabled}
             onClick={event => { event.stopPropagation(); toggleTopicExpansion(row.source.sourceRef) }}
           ><svg aria-hidden viewBox="0 0 12 12" width="12" height="12" style={{ transform: row.expanded ? 'rotate(90deg)' : 'rotate(0deg)', transition: 'transform .16s ease' }}>
             <path d="m4 2.5 3.5 3.5L4 9.5" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
           </svg></button> : <span aria-hidden style={styles.topicSpacer}>{isDefaultCategory ? '' : '·'}</span>}
           <button type="button" style={styles.topicSelect} disabled={assignment?.disabled}
-            aria-label={assignment ? `指定到${row.source.displayName}` : undefined}
+            aria-label={assignment ? tr("指定到{v0}", { v0: row.source.displayName }) : undefined}
             onClick={event => { event.stopPropagation(); selectTopic(row.source) }}
           ><span style={styles.topicName}>{row.source.displayName}</span>{assignment && isSelected
-            ? <span style={styles.topicCount}>当前主题</span>
+            ? <span style={styles.topicCount}>{tr("当前主题")}</span>
             : <ArkmeTopicCount count={displayedCount} error={error} hidden={showActions} />}</button>
-          {showActions && <span data-arkme-self-topic-actions style={styles.topicActions}><ArkmeDshRowActionsMenu open={manageMenuOpen} label={`${row.source.displayName}主题操作`}
+          {showActions && <span data-arkme-self-topic-actions style={styles.topicActions}><ArkmeDshRowActionsMenu open={manageMenuOpen} label={tr("{v0}主题操作", { v0: row.source.displayName })}
             items={[
               ...(canCreateChild ? [{ id: 'create', label: '新建子主题', icon: <IconNewChatOutline16 /> }] : []),
               ...(onRenameTopic ? [{ id: 'rename', label: '重命名', icon: <IconEditOutline16 /> }] : []),
@@ -1024,7 +1026,7 @@ export function ArkmeSourceBreadcrumb({
         </div>
         {loading && row.source.hasPendingChildren === true && <div role="status" data-arkme-self-topic-children-loading="true"
           style={{ ...styles.childLoadingRow, paddingLeft: 34 + row.depth * 16 }}
-        ><ArkmeTopicLoadingIcon />加载子主题</div>}
+        ><ArkmeTopicLoadingIcon />{tr("加载子主题")}</div>}
       </div>
       })}
       {customDragEnabled && draggingSource !== undefined && <div
@@ -1041,43 +1043,41 @@ export function ArkmeSourceBreadcrumb({
           event.preventDefault()
           finishTopicMove({ parent: undefined, insertBefore: undefined, indicatorSourceRef: 'root', indicatorDepth: 0, before: false, into: false })
         }}
-      >拖到这里，变为一级主题</div>}
+      >{tr("拖到这里，变为一级主题")}</div>}
       {moveError !== '' && <div role="alert" style={styles.loadingRow}>{moveError}</div>}
       {loading && <div role="status" data-arkme-self-topic-loading="true" style={styles.loadingRow}><ArkmeTopicLoadingIcon />{searching ? '仍在查找主题…' : '加载更多主题'}</div>}
       {!loading && !error && rows.length === 0 && (searching || assignment) && <div role="status" style={styles.loadingRow}>{searching ? '没有匹配的主题' : '暂无主题'}</div>}
-      {!loading && error !== undefined && <div role="alert" style={styles.loadingRow}>
-        加载失败
-        {onRetry !== undefined && <button data-arkme-feedback="neutral" type="button" style={styles.retry} onClick={onRetry}>重试</button>}
+      {!loading && error !== undefined && <div role="alert" style={styles.loadingRow}>{tr("加载失败")}{onRetry !== undefined && <button data-arkme-feedback="neutral" type="button" style={styles.retry} onClick={onRetry}>{tr("重试")}</button>}
       </div>}
       </div>
       <div aria-hidden="true" data-arkme-self-topic-fade style={styles.menuListFade} />
       </div>
       {assignment?.status}
-      {assignment?.onRelease && <button type="button" style={styles.option} disabled={assignment.disabled} onClick={assignment.onRelease}>移出主题</button>}
+      {assignment?.onRelease && <button type="button" style={styles.option} disabled={assignment.disabled} onClick={assignment.onRelease}>{tr("移出主题")}</button>}
       <div data-arkme-self-topic-footer="true" style={styles.createFooter}>
-        {onCreateTopic !== undefined && <Button type="button" variant="outline" size="md" aria-label="新主题"
+        {onCreateTopic !== undefined && <Button type="button" variant="outline" size="md" aria-label={tr("新主题")}
           disabled={assignment?.disabled}
           className="arkme-self-topic-create-button" icon={<IconNewChatOutline16 size={14} />} onClick={() => {
           if (assignment) { if (!assignment.disabled) onCreateTopic(); return }
           acceptExternalSelection()
           closeMenu()
           onCreateTopic()
-        }}>新主题</Button>}
+        }}>{tr("新主题")}</Button>}
         <ArkmeDshViewOptionsMenu
           open={sortMenuOpen}
           items={([
             { type: 'label', id: 'sort-label', text: '排序方式' },
-            { id: 'latest', label: <span className="arkme-self-topic-sort-option" aria-label="最新">
-              <span className="arkme-self-topic-sort-option-title">最新</span>
-              <span className="arkme-self-topic-sort-option-description">有最新内容的主题靠前</span>
+            { id: 'latest', label: <span className="arkme-self-topic-sort-option" aria-label={tr("最新")}>
+              <span className="arkme-self-topic-sort-option-title">{tr("最新")}</span>
+              <span className="arkme-self-topic-sort-option-description">{tr("有最新内容的主题靠前")}</span>
             </span> },
-            { id: 'most', label: <span className="arkme-self-topic-sort-option" aria-label="最多">
-              <span className="arkme-self-topic-sort-option-title">最多</span>
-              <span className="arkme-self-topic-sort-option-description">最多内容的主题靠前</span>
+            { id: 'most', label: <span className="arkme-self-topic-sort-option" aria-label={tr("最多")}>
+              <span className="arkme-self-topic-sort-option-title">{tr("最多")}</span>
+              <span className="arkme-self-topic-sort-option-description">{tr("最多内容的主题靠前")}</span>
             </span> },
-            { id: 'custom', label: <span className="arkme-self-topic-sort-option" aria-label="自定义">
-              <span className="arkme-self-topic-sort-option-title">自定义</span>
-              <span className="arkme-self-topic-sort-option-description">可按住主题拖动排序</span>
+            { id: 'custom', label: <span className="arkme-self-topic-sort-option" aria-label={tr("自定义")}>
+              <span className="arkme-self-topic-sort-option-title">{tr("自定义")}</span>
+              <span className="arkme-self-topic-sort-option-description">{tr("可按住主题拖动排序")}</span>
             </span> },
           ] satisfies MenuEntry[])}
           selectedIds={[sort]}
@@ -1090,7 +1090,7 @@ export function ArkmeSourceBreadcrumb({
             setSortMenuOpen(false)
             revealSelectedTopic()
           }}
-          ariaLabel={`主题排序方式：${sort === 'latest' ? '最新' : sort === 'most' ? '最多' : '自定义'}`}
+          ariaLabel={`主题排序方式：${sort === 'latest' ? tr("最新") : sort === 'most' ? tr("最多") : tr("自定义")}`}
           dataArkmeSelfTopicSortTrigger="true"
         />
       </div>

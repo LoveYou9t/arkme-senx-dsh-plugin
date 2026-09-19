@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import { ArkmeActionMenu } from './ArkmeDshMenu.js'
 import { copyText } from './clipboard-text.js'
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
@@ -22,7 +23,7 @@ class SelectionBoundary extends Component<{ children: ReactNode }, { failed: boo
   state = { failed: false }
   static getDerivedStateFromError() { return { failed: true } }
   componentDidCatch() { console.warn('Arkme native selection disabled after a rendering error.') }
-  render() { return this.state.failed ? <span role="status">多选暂不可用</span> : this.props.children }
+  render() { return this.state.failed ? <span role="status">{tr("多选暂不可用")}</span> : this.props.children }
 }
 
 export function NativeSelectionHeader({ sessionId, useChat, doc = document }: HeaderProps & { doc?: Document }) {
@@ -31,12 +32,14 @@ export function NativeSelectionHeader({ sessionId, useChat, doc = document }: He
 }
 
 function NativeSelectionView({ useChat, doc }: { useChat: SnapshotSelectorHook<unknown>; doc: Document }) {
+  useArkmeLocale()
   const [present, setPresent] = useState(false)
   useLayoutEffect(() => observeNativeChatPresence(doc, setPresent), [doc])
   return present ? <NativeSelectionSession useChat={useChat} doc={doc} /> : null
 }
 
 function NativeCopyTextAction({ chat, selectedKey, doc }: { chat: NativeChat; selectedKey: string | undefined; doc: Document }) {
+  useArkmeLocale()
   const [status, setStatus] = useState('')
   const [busy, setBusy] = useState(false)
   const pending = useRef(false)
@@ -64,16 +67,17 @@ function NativeCopyTextAction({ chat, selectedKey, doc }: { chat: NativeChat; se
   }
   const disabled = selectedKey === undefined || busy
   return <>
-    <button data-arkme-feedback="neutral" type="button" aria-label="复制文本" disabled={disabled} onClick={() => { void copy() }}
+    <button data-arkme-feedback="neutral" type="button" aria-label={tr("复制文本")} disabled={disabled} onClick={() => { void copy() }}
       style={{ ...messageSelectionStyles.selectBarButton, ...(disabled ? messageSelectionStyles.selectBarButtonDisabled : {}) }}>
       <span style={messageSelectionStyles.selectBarIconTile}><ArkmeSelectActionIcon kind="copy" size={22} /></span>
-      <span style={messageSelectionStyles.selectBarLabel}>{busy ? '复制中…' : '复制文本'}</span>
+      <span style={messageSelectionStyles.selectBarLabel}>{busy ? '复制中…' : tr("复制文本")}</span>
     </button>
     {status && <span role="status" style={{ position: 'absolute', top: 4, left: 0, right: 0, textAlign: 'center', fontSize: 12, color: arkmeTheme.secondary }}>{status}</span>}
   </>
 }
 
 function NativeSelectionSession({ useChat, doc }: { useChat: SnapshotSelectorHook<unknown>; doc: Document }) {
+  useArkmeLocale()
   const snapshot = useChat(value => value)
   const chat = readNativeChat(snapshot)
   const chatRef = useRef<NativeChat | undefined>(chat)
@@ -177,7 +181,7 @@ function NativeSelectionSession({ useChat, doc }: { useChat: SnapshotSelectorHoo
   }, [state.active, visible, failed, chat, doc, layout.viewport])
 
   if (!visible) return null
-  if (failed || !chat) return <span role="status">多选暂不可用</span>
+  if (failed || !chat) return <span role="status">{tr("多选暂不可用")}</span>
   const exit = () => { restoreFocus.current = true; dispatch({ type: 'exit' }) }
   const escape = (event: React.KeyboardEvent) => {
     if (event.key !== 'Escape' || doc.querySelector('[role="dialog"][aria-modal="true"], dialog[open], [role="menu"]')) return
@@ -194,11 +198,11 @@ function NativeSelectionSession({ useChat, doc }: { useChat: SnapshotSelectorHoo
         }`
       : ''}</style>}
     {state.active && <div data-arkme-native-selection="header" onKeyDown={escape} style={{ display: 'flex', alignItems: 'center', gap: 6, color: arkmeTheme.text, fontSize: 12 }}>
-        <span role="status" aria-live="polite">已选 {state.keys.size} 条</span>
-        {layout.cramped && <span role="status" style={{ color: arkmeTheme.secondary }}>请扩大窗口以勾选消息</span>}
-        <button data-arkme-feedback="neutral" type="button" style={buttonStyle} onClick={exit}><ArkmeSelectActionIcon kind="close" size={16} />退出</button>
+        <span role="status" aria-live="polite">{tr("已选")} {state.keys.size} {tr("条")}</span>
+        {layout.cramped && <span role="status" style={{ color: arkmeTheme.secondary }}>{tr("请扩大窗口以勾选消息")}</span>}
+        <button data-arkme-feedback="neutral" type="button" style={buttonStyle} onClick={exit}><ArkmeSelectActionIcon kind="close" size={16} />{tr("退出")}</button>
     </div>}
-    {menu && createPortal(<ArkmeActionMenu label="消息操作" point={{ x: menu.x, y: menu.y }} pointDocument={doc}
+    {menu && createPortal(<ArkmeActionMenu label={tr("消息操作")} point={{ x: menu.x, y: menu.y }} pointDocument={doc}
       autoFocus={menu.autoFocus} onClose={() => setMenu(null)} actions={[
         { id: 'select', label: '多选', icon: <ArkmeSelectActionIcon kind="select" size={16} />, onSelect: () => {
           setMenu(null)
@@ -208,19 +212,19 @@ function NativeSelectionSession({ useChat, doc }: { useChat: SnapshotSelectorHoo
           } catch { fail() }
         } },
       ]} />, doc.body)}
-    {state.active && layout.actionDock && createPortal(<div data-arkme-native-selection="actions" role="group" aria-label="多选操作" onKeyDown={escape}
+    {state.active && layout.actionDock && createPortal(<div data-arkme-native-selection="actions" role="group" aria-label={tr("多选操作")} onKeyDown={escape}
       style={{ ...messageSelectionStyles.selectBar, height: '100%', borderTop: 0 }}>
       <style>{nativeSelectionActionOverlayCss}</style>
       <NativeCopyTextAction key={state.keys.size === 1 ? [...state.keys][0] : 'no-single-selection'} chat={chat} selectedKey={state.keys.size === 1 ? [...state.keys][0] : undefined} doc={doc} />
       {([{ kind: 'link', label: '复制链接' }, { kind: 'forward', label: '转发' }] as const).map(action =>
-        <button data-arkme-feedback="neutral" key={action.kind} type="button" disabled title="暂未接入" aria-label={action.label}
+        <button data-arkme-feedback="neutral" key={action.kind} type="button" disabled title={tr("暂未接入")} aria-label={action.label}
           style={{ ...messageSelectionStyles.selectBarButton, ...messageSelectionStyles.selectBarButtonDisabled }}>
           <span style={messageSelectionStyles.selectBarIconTile}><ArkmeSelectActionIcon kind={action.kind} size={22} /></span>
           <span style={messageSelectionStyles.selectBarLabel}>{action.label}</span>
         </button>)}
-      <button data-arkme-feedback="neutral" type="button" aria-label="退出多选" style={messageSelectionStyles.selectBarButton} onClick={exit}>
+      <button data-arkme-feedback="neutral" type="button" aria-label={tr("退出多选")} style={messageSelectionStyles.selectBarButton} onClick={exit}>
         <span style={messageSelectionStyles.selectBarIconTile}><ArkmeSelectActionIcon kind="close" size={18} /></span>
-        <span style={messageSelectionStyles.selectBarLabel}>退出多选</span>
+        <span style={messageSelectionStyles.selectBarLabel}>{tr("退出多选")}</span>
       </button>
     </div>, layout.actionDock)}
     {state.active && layout.viewport && createPortal(<div ref={layer} data-arkme-native-selection="controls" onKeyDown={escape}

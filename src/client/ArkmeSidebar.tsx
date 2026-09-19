@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale, arkmeIntlLocale } from './locale.js'
 import { ArkmeActionMenu } from './ArkmeDshMenu.js'
 import { useComposerPasteFocus } from './composer-paste-focus.js'
 import { ArkmeComposerScreenshotButton } from './ArkmeComposerScreenshotButton.js'
@@ -333,6 +334,7 @@ const ArkmeComposerInputStats = memo(function ArkmeComposerInputStats({
   showsInputTime: boolean
   onToggle(): void
 }) {
+  useArkmeLocale()
   const [nowMillis, setNowMillis] = useState(() => Date.now())
   const [foreground, setForeground] = useState(() => typeof document === 'undefined' || document.visibilityState !== 'hidden')
   useEffect(() => {
@@ -352,16 +354,16 @@ const ArkmeComposerInputStats = memo(function ArkmeComposerInputStats({
     ? 0
     : Math.max(0, Math.floor((nowMillis - startedAtMillis) / 1_000))
   return <div data-arkme-composer-stats="true" style={styles.composerStats} aria-label={`已输入 ${String(textLength)} 字，编辑 ${String(durationSeconds)} 秒`}>
-    <span>{String(textLength)}字</span>
+    <span>{String(textLength)}{tr("字")}</span>
     <button data-arkme-feedback="neutral"
       type="button"
       style={styles.composerTimeToggle}
-      aria-label={showsInputTime ? '隐藏输入时长' : '显示输入时长'}
-      title={showsInputTime ? '隐藏输入时长' : '显示输入时长'}
+      aria-label={showsInputTime ? tr("隐藏输入时长") : tr("显示输入时长")}
+      title={showsInputTime ? tr("隐藏输入时长") : tr("显示输入时长")}
       onMouseDown={event => { event.preventDefault() }}
       onClick={onToggle}
     >
-      <span>{showsInputTime ? `${String(durationSeconds)}秒` : '思考中…'}</span>
+      <span>{showsInputTime ? tr("{v0}秒", { v0: String(durationSeconds) }) : tr("思考中…")}</span>
       <ArkmeComposerInputTimeIcon visible={showsInputTime} />
     </button>
   </div>
@@ -1173,11 +1175,11 @@ function dayKey(value: number): string {
 }
 
 function dayLabel(value: number): string {
-  return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit' }).format(new Date(value))
+  return new Intl.DateTimeFormat(arkmeIntlLocale(), { month: '2-digit', day: '2-digit' }).format(new Date(value))
 }
 
 function timeLabel(value: number): string {
-  return new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value))
+  return new Intl.DateTimeFormat(arkmeIntlLocale(), { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value))
 }
 
 export function arkmeConversationJoinEventsInLoadedWindow(
@@ -1209,8 +1211,8 @@ export function arkmeMemberJoinTimeLabel(value: number, nowMillis = Date.now()):
   const dayOffset = Math.round((start - target) / 86_400_000)
   const time = timeLabel(value)
   if (dayOffset === 0) return time
-  if (dayOffset === 1) return `昨天 ${time}`
-  if (dayOffset === 2) return `前天 ${time}`
+  if (dayOffset === 1) return tr("昨天 {v0}", { v0: time })
+  if (dayOffset === 2) return tr("前天 {v0}", { v0: time })
   return `${String(date.getMonth() + 1).padStart(2, '0')}月${String(date.getDate()).padStart(2, '0')}日 ${time}`
 }
 
@@ -1226,7 +1228,7 @@ export function arkmeVisibleMemberJoinInvitees(
 }
 
 export function arkmeSourceDestinationLabel(source: ArkmeSourceItem | undefined): string {
-  return source === undefined ? '发给自己'
+  return source === undefined ? tr("发给自己")
     : arkmeTopicDisplayName(source.displayName, source.kind === 'topic' ? source.topicKind : undefined)
 }
 
@@ -1600,14 +1602,14 @@ export function MessageAvatar(props: {
   onHover?: ((member: ArkmeConversationMemberItem, anchor: HTMLElement) => void) | undefined
 }) {
   const member = props.member
-  const avatar = <ArkmeUserAvatar senderKind={props.senderKind} {...(props.avatarRef === undefined ? {} : { avatarRef: props.avatarRef })} size={ARKME_MESSAGE_AVATAR_SIZE} label="消息头像" />
+  const avatar = <ArkmeUserAvatar senderKind={props.senderKind} {...(props.avatarRef === undefined ? {} : { avatarRef: props.avatarRef })} size={ARKME_MESSAGE_AVATAR_SIZE} label={tr("消息头像")} />
   if (member === undefined) return <span data-arkme-message-avatar="true" style={styles.messageAvatar} aria-hidden>{avatar}</span>
   return <button
     type="button"
     data-arkme-message-avatar="true"
     style={{ ...styles.messageAvatar, padding: 0, border: 0, cursor: props.profileEnabled ? 'pointer' : 'default' }}
     aria-label={props.profileEnabled
-      ? member.isSelf ? '查看我的用户卡片' : `查看 ${member.displayName}`
+      ? member.isSelf ? '查看我的用户卡片' : tr("查看 {v0}", { v0: member.displayName })
       : `${member.displayName} 的消息头像`}
     onClick={event => {
       event.stopPropagation()
@@ -1645,7 +1647,7 @@ export function ArkmeMemberJoinNotice(props: {
     return member === undefined
       ? <span key={key}>{label}</span>
       : <button key={key} type="button" style={styles.memberJoinLink}
-        aria-label={`查看 ${label}`} onClick={() => { props.onOpenMember(member) }}>{label}</button>
+        aria-label={tr("查看 {v0}", { v0: label })} onClick={() => { props.onOpenMember(member) }}>{label}</button>
   }
   return <li
     data-arkme-conversation-row={props.rowId}
@@ -1656,13 +1658,13 @@ export function ArkmeMemberJoinNotice(props: {
     <div style={styles.memberJoinTime}>{arkmeMemberJoinTimeLabel(props.event.occurredAtMillis)}</div>
     <div style={styles.memberJoinLine}>
       {renderPerson(props.event.inviter, 14, 'inviter')}
-      <span>{` ${props.event.action === 'direct_add' ? '添加' : '邀请'} `}</span>
+      <span>{` ${props.event.action === 'direct_add' ? tr("添加") : tr("邀请")} `}</span>
       {visibleInvitees.map((person, index) => <Fragment key={`${person.memberRef ?? person.displayName}:${index}`}>
         {index > 0 && <span>、</span>}
         {renderPerson(person, inviteeMaxCount, `invitee:${person.memberRef ?? person.displayName}:${index}`)}
       </Fragment>)}
       {props.event.invitees.length > 2 && <span>{`等${String(props.event.invitees.length)}人`}</span>}
-      <span> 加入群聊</span>
+      <span> {tr("加入群聊")}</span>
     </div>
   </li>
 }
@@ -1673,8 +1675,8 @@ export function ArkmeMemberLeaveNotice(props: { rowId:string; event:ArkmeMemberE
     style={{...styles.memberJoinNotice,marginTop:26}}>
     <div style={styles.memberJoinTime}>{arkmeMemberJoinTimeLabel(props.event.occurredAtMillis)}</div>
     <div style={styles.memberJoinLine}>
-      <button type="button" style={styles.memberJoinLink} aria-label={`查看 ${label}`} onClick={() => { props.onOpen(props.event) }}>{label}</button>
-      <span> 退出了群聊</span>
+      <button type="button" style={styles.memberJoinLink} aria-label={tr("查看 {v0}", { v0: label })} onClick={() => { props.onOpen(props.event) }}>{label}</button>
+      <span> {tr("退出了群聊")}</span>
     </div>
   </li>
 }
@@ -1722,7 +1724,7 @@ function ArkmeExtensionParentPreview({ parent, isMe, onSelect }: {
     }}
   >
     {text !== '' && <span style={styles.extensionParentText}><ArkmeRichText text={text} presentation="preview" /></span>}
-    {visuals.length > 0 && <span style={styles.extensionParentMedia} aria-label="原消息附件">
+    {visuals.length > 0 && <span style={styles.extensionParentMedia} aria-label={tr("原消息附件")}>
       {visuals.map(block => block.kind === 'image'
         ? <span key={block.mediaRef} style={{ position: 'relative', display: 'flex', alignSelf: 'center', flex: 'none' }}>
           <img
@@ -1733,11 +1735,11 @@ function ArkmeExtensionParentPreview({ parent, isMe, onSelect }: {
             draggable={false}
             style={styles.extensionParentImage}
           />
-          {block.dynamicPhoto !== undefined && <span aria-label="实况照片" style={{ position: 'absolute', display: 'flex', left: 2, bottom: 2, pointerEvents: 'none' }}>
+          {block.dynamicPhoto !== undefined && <span aria-label={tr("实况照片")} style={{ position: 'absolute', display: 'flex', left: 2, bottom: 2, pointerEvents: 'none' }}>
             <ArkmeLivePhotoBadge variant="extension" />
           </span>}
         </span>
-        : <span key={block.mediaRef} style={styles.extensionParentFile}>{block.fileName || '视频'}</span>)}
+        : <span key={block.mediaRef} style={styles.extensionParentFile}>{block.fileName || tr("视频")}</span>)}
     </span>}
     {text === '' && visuals.length === 0 && firstFile !== undefined
       ? <span style={styles.extensionParentFile}>{firstFile.fileName || '附件'}</span>
@@ -1777,7 +1779,7 @@ function copyLinkDetailDateRange(items: readonly Pick<ArkmeMessageCopyLinkSnapsh
   const end = Math.max(...timestamps)
   const startText = forwardDateLabel(start)
   const endText = forwardDateLabel(end)
-  return startText === endText ? startText : `${startText} 至 ${endText}`
+  return startText === endText ? startText : tr("{v0} 至 {v1}", { v0: startText, v1: endText })
 }
 
 function copyLinkShareUrl(shareWebsite: string, sid: string): string {
@@ -1805,15 +1807,15 @@ export function arkmeForwardTargetTimeLabel(value: number, now: number = Date.no
 function arkmeDraftForwardRecordsTitleWithFallback(rawName: string, sourceCount: number, fallbackName: string): string {
   const name = rawName.trim() === '' ? fallbackName.trim() : rawName.trim()
   const titleName = name === '' ? '快记' : name
-  if (sourceCount <= 1) return `${titleName}的快记`
-  return `${titleName}的${String(sourceCount)}条快记`
+  if (sourceCount <= 1) return tr("{v0}的快记", { v0: titleName })
+  return tr("{v0}的{v1}条快记", { v0: titleName, v1: String(sourceCount) })
 }
 
 function arkmeDraftForwardPrivateRecordsTitle(rawCurrentName: string, rawCounterpartName: string, sourceCount: number): string {
   const currentName = rawCurrentName.trim() === '' ? '我' : rawCurrentName.trim()
   const counterpartName = rawCounterpartName.trim() === '' ? '对方' : rawCounterpartName.trim()
-  if (sourceCount <= 1) return `${currentName}和${counterpartName}的快记`
-  return `${currentName}和${counterpartName}的${String(sourceCount)}条快记`
+  if (sourceCount <= 1) return tr("{v0}和{v1}的快记", { v0: currentName, v1: counterpartName })
+  return tr("{v0}和{v1}的{v2}条快记", { v0: currentName, v1: counterpartName, v2: String(sourceCount) })
 }
 
 function arkmeForwardRecordPreviewLine(item: ArkmeTimelineItem): string {
@@ -1923,7 +1925,7 @@ function CopyLinkRecordAvatar({ item, size = 46 }: { item: ArkmeMessageCopyLinkS
     return <span style={sizedStyle} aria-hidden><img src={avatar} alt="" draggable={false} style={styles.copyLinkDetailAvatarImage} /></span>
   }
   if (avatar !== '') {
-    return <ArkmeUserAvatar avatarRef={avatar} size={size} label="分享快记头像" />
+    return <ArkmeUserAvatar avatarRef={avatar} size={size} label={tr("分享快记头像")} />
   }
   return <span style={sizedStyle} aria-hidden>{[...name][0] ?? '?'}</span>
 }
@@ -1970,6 +1972,7 @@ function CopyLinkDetailDrawer({
   sendError: string
   shareWebsite: string
 }) {
+  useArkmeLocale()
   const panelRef = useRef<HTMLElement>(null)
   const resize = useResizableNoteDetail(panelRef)
   const detail = state.status === 'ready' ? state.detail : undefined
@@ -2034,17 +2037,17 @@ function CopyLinkDetailDrawer({
   const extensionItems = detail?.recordContext?.extensions ?? []
   const extensionCount = Math.max(detail?.recordContext?.extensionCount ?? 0, extensionItems.length)
   const showExtensions = extensionCount > 0 || extensionItems.length > 0
-  return <aside ref={panelRef} style={{ ...styles.copyLinkDetailPanel, ...resize.style }} aria-label="快记分享链接详情" data-arkme-copy-link-detail="true">
+  return <aside ref={panelRef} style={{ ...styles.copyLinkDetailPanel, ...resize.style }} aria-label={tr("快记分享链接详情")} data-arkme-copy-link-detail="true">
     {resize.handle}
     <ArkmeRightPanelHeader title={title} subtitle={subtitle} onClose={onClose}
       actions={<button data-arkme-feedback="neutral" type="button" className="arkme-right-panel-header-button"
         style={{ ...styles.copyLinkDetailHeaderButton, width: 30, height: 30, marginTop: -3, opacity: shareDisabled ? .38 : 1, cursor: shareDisabled ? 'default' : 'pointer' }}
-        disabled={shareDisabled} aria-label="分享快记链接" onClick={onShare}><ArkmeForwardSubmitIcon /></button>} />
-    {state.status === 'loading' && <div role="status" style={styles.copyLinkDetailStatus}>正在加载链接内容...</div>}
+        disabled={shareDisabled} aria-label={tr("分享快记链接")} onClick={onShare}><ArkmeForwardSubmitIcon /></button>} />
+    {state.status === 'loading' && <div role="status" style={styles.copyLinkDetailStatus}>{tr("正在加载链接内容...")}</div>}
     {state.status === 'error' && <div role="alert" style={styles.copyLinkDetailStatus}>
       <div style={styles.copyLinkDetailError}>
         <span>{state.message}</span>
-        <button data-arkme-feedback="neutral" type="button" style={styles.copyLinkDetailRetry} onClick={onRetry}>重试</button>
+        <button data-arkme-feedback="neutral" type="button" style={styles.copyLinkDetailRetry} onClick={onRetry}>{tr("重试")}</button>
       </div>
     </div>}
     {detail !== undefined && <div style={styles.copyLinkDetailBody}>
@@ -2053,20 +2056,20 @@ function CopyLinkDetailDrawer({
         : <div style={styles.copyLinkDetailMultiList}>{detail.items.map(renderMultiRecord)}</div>}
       <div style={styles.copyLinkDetailDivider} aria-hidden />
       {showExtensions && <>
-        <div style={styles.copyLinkDetailExtensionTitle}>共{extensionCount}条延展</div>
+        <div style={styles.copyLinkDetailExtensionTitle}>{tr("共")}{extensionCount}{tr("条延展")}</div>
         {extensionItems.length > 0 && <div style={styles.copyLinkDetailExtensionList}>{extensionItems.map(renderExtensionItem)}</div>}
       </>}
     </div>}
     {detail !== undefined && <footer style={styles.copyLinkDetailFooter}>
-      {generatedAt !== '' && <div style={styles.copyLinkDetailGeneratedAt}>此链接生成时间：{generatedAt}</div>}
+      {generatedAt !== '' && <div style={styles.copyLinkDetailGeneratedAt}>{tr("此链接生成时间：")}{generatedAt}</div>}
       <div className="arkme-detail-extension-input-bar" style={styles.copyLinkDetailInputArea}>
         <div className="arkme-detail-extension-input-shell" style={styles.copyLinkDetailInputBar}>
           <span aria-hidden style={styles.copyLinkDetailInputIcon}><FileTextIcon size={18} /></span>
           <textarea
             style={styles.copyLinkDetailInput}
             value={draft}
-            placeholder="记录此刻想法..."
-            aria-label="记录此刻想法"
+            placeholder={tr("记录此刻想法...")}
+            aria-label={tr("记录此刻想法")}
             disabled={sendBusy}
             rows={1}
             maxLength={20000}
@@ -2079,7 +2082,7 @@ function CopyLinkDetailDrawer({
             }}
           />
           <ArkmeComposerSendButton
-            ariaLabel={sendBusy ? '发送中' : '发送延展'}
+            ariaLabel={sendBusy ? tr("发送中") : tr("发送延展")}
             disabled={sendDisabled}
             onClick={onSendDraft}
           />
@@ -2182,6 +2185,7 @@ export function ArkmeSurface({
   ownsQrLogin = true,
   active = true,
 }: ArkmeSurfaceProps = {}) {
+  useArkmeLocale()
   const ui = useSyncExternalStore(arkmeUi.subscribe, arkmeUi.getViewSnapshot, arkmeUi.getViewSnapshot)
   const notificationActivation = useSyncExternalStore(
     arkmeNotificationActivation.subscribe,
@@ -4634,8 +4638,8 @@ export function ArkmeSurface({
         if (reeditTarget !== undefined && !sameReeditTarget()) return false
         const limit = file.type.startsWith('image/') ? policy.maxImageBytes : policy.maxFileBytes
         const attachmentCount = reeditTarget === undefined ? arkmeComposerDraftStore.get(targetDraftKey).attachments.length : reeditAttachmentCount
-        if (attachmentCount >= maxAttachments) { errors.push(`最多添加 ${maxAttachments} 个附件：${file.name}`); continue }
-        if (file.size === 0 || file.size > limit) { errors.push(`${file.name} 为空或超过 ${Math.floor(limit / 1024 / 1024)} MiB`); continue }
+        if (attachmentCount >= maxAttachments) { errors.push(tr("最多添加 {v0} 个附件：{v1}", { v0: maxAttachments, v1: file.name })); continue }
+        if (file.size === 0 || file.size > limit) { errors.push(tr("{v0} 为空或超过 {v1} MiB", { v0: file.name, v1: Math.floor(limit / 1024 / 1024) })); continue }
         try {
           const localFile = await sdk.stageFile(file, { signal: controller.signal, expectedUserId: targetUserId, ...(reeditTarget ? { retention: 'references' as const } : {}) })
           const currentAuth = arkmeAuthStore.getSnapshot().auth
@@ -6076,7 +6080,7 @@ export function ArkmeSurface({
       setConversationExportToast({
         sequence: conversationExportToastSequenceRef.current,
         kind: 'success',
-        text: `已导出 ${String(exportItems.length)} 条内容，Markdown 文件已开始下载`,
+        text: tr("已导出 {v0} 条内容，Markdown 文件已开始下载", { v0: String(exportItems.length) }),
       })
     }).catch(caught => {
       if (!isArkmeRequestAbort(caught, controller.signal)) {
@@ -6106,8 +6110,8 @@ export function ArkmeSurface({
       forwardSuccessTimerRef.current = undefined
     }
     const message = failureCount > 0
-      ? `已转发到 ${String(successCount)} 个对象，${String(failureCount)} 个失败`
-      : `已转发到 ${String(successCount)} 个对象`
+      ? tr("已转发到 {v0} 个对象，{v1} 个失败", { v0: String(successCount), v1: String(failureCount) })
+      : tr("已转发到 {v0} 个对象", { v0: String(successCount) })
     setForwardSuccessFeedback({ message, targets: [...targets] })
     forwardSuccessTimerRef.current = window.setTimeout(() => {
       setForwardSuccessFeedback(undefined)
@@ -6767,7 +6771,7 @@ export function ArkmeSurface({
     }
     if (!isCurrent()) return
     if (!selected && forwardTargetPicker.selectedTargetKeys.length >= MAX_FORWARD_TARGET_SELECTION) {
-      showMessageActionStatus(`最多选择 ${String(MAX_FORWARD_TARGET_SELECTION)} 个转发对象`)
+      showMessageActionStatus(tr("最多选择 {v0} 个转发对象", { v0: String(MAX_FORWARD_TARGET_SELECTION) }))
       return
     }
     setForwardTargetPicker(current => {
@@ -6958,7 +6962,7 @@ export function ArkmeSurface({
     : directAdmission.blocked ? directAdmission.message
     : activeComposerExtensionTarget === undefined
       ? composerPlaceholder
-      : `发送到「${source?.displayName ?? ''}」…`
+      : tr("发送到「{v0}」…", { v0: source?.displayName ?? '' })
   const activeComposerTargetItem = activeRecordReeditComposer === undefined
     ? activeComposerExtensionTarget?.item
     : {
@@ -6981,10 +6985,10 @@ export function ArkmeSurface({
     aria-hidden={!composerInputFocused}
   >
     <span style={{ ...styles.composerDestinationHintIcon, fontSize: source?.kind === 'private_chat' ? 16 : 14 }} aria-hidden>💡</span>
-    <span style={styles.composerDestinationHintText} title={`正在给 ${destinationName} 发消息`}><span>正在给 </span>
+    <span style={styles.composerDestinationHintText} title={tr("正在给 {v0} 发消息", { v0: destinationName })}><span>{tr("正在给")} </span>
     <span style={styles.composerDestinationHintName}>{source?.kind === 'group_chat' && destinationName.length > 10
       ? `${destinationName.slice(0, 10)}...` : destinationName}</span>
-    {destinationMemberCount !== undefined && destinationMemberCount > 1 && <span>{` (${destinationMemberCount}人)`}</span>}<span> 发消息</span></span>
+    {destinationMemberCount !== undefined && destinationMemberCount > 1 && <span>{tr(" ({v0}人)", { v0: destinationMemberCount })}</span>}<span> {tr("发消息")}</span></span>
   </div>
   const composerInfoRow = <div data-arkme-composer-info-row="true"
     style={{ ...styles.composerInfoRow, minHeight: sourceIsChat ? (source?.kind === 'private_chat' ? 30 : 20) : composerStatsVisible ? 20 : 0 }}>
@@ -7234,7 +7238,7 @@ export function ArkmeSurface({
           selectedIds: new Set(recordDeletion.items.filter(keep).map(arkmeTimelineOccurrenceKey)) })
         const rejection = result.items.find(item => item.result === 'rejected')
         showMessageActionStatus(deleted.size === result.items.length
-          ? `成功删除 ${String(deleted.size)} 条内容`
+          ? tr("成功删除 {v0} 条内容", { v0: String(deleted.size) })
           : rejection?.result === 'rejected'
             ? `已确认删除 ${String(deleted.size)} 条；${rejection.message}；其余内容未继续删除`
             : `已确认删除 ${String(deleted.size)} 条，其余内容请刷新核对后再操作`)
@@ -7279,7 +7283,7 @@ export function ArkmeSurface({
       {productChrome && authView === 'content' && (conversationBackdropVisible || ui.mode === 'arko') && <aside
         data-arkme-owned="directory-pane"
         style={{ ...styles.directoryPane, ...(compactNavigation ? styles.compactDirectoryPane : {}) }}
-        aria-label="Arkme 对话目录"
+        aria-label={tr("Arkme 对话目录")}
       >
         <ArkmeNavigation
           currentSessionId={currentSessionId}
@@ -7313,12 +7317,12 @@ export function ArkmeSurface({
                   <h2 style={styles.title}>{surfaceTitle}</h2>
                   {authenticated && conversationBackdropVisible && source?.kind === 'private_chat'
                     && <ArkmeMembershipBadge memberType={source.peerMemberType} />}
-                  {isArkmeOfficialAuthor(source) && <ArkmeTopicTagBadge label="官方" />}
+                  {isArkmeOfficialAuthor(source) && <ArkmeTopicTagBadge label={tr("官方")} />}
                   {source?.isMuted === true && <span style={styles.titleMuteIcon}><ArkmeMuteIcon size={16} /></span>}
                 </span>
                 {authenticated && conversationBackdropVisible && source?.kind === 'group_chat'
                   && aiPolishSettings?.enabled === true
-                  && <span style={styles.headerSubtitle}>AI润色已开启{aiPolishSettings.activeRuleName.trim() === '' ? '' : ` · ${aiPolishSettings.activeRuleName}`}</span>}
+                  && <span style={styles.headerSubtitle}>{tr("AI润色已开启")}{aiPolishSettings.activeRuleName.trim() === '' ? '' : ` · ${aiPolishSettings.activeRuleName}`}</span>}
               </div>}
             {authenticated && selfWorkspaceSelected
               && source?.isMuted === true && <span style={styles.titleMuteIcon}><ArkmeMuteIcon size={16} /></span>}
@@ -7361,7 +7365,7 @@ export function ArkmeSurface({
           />}
           {authenticated && activeConversation && isArkmeSelfWorkspaceSource(source) && <div style={ARKME_CONVERSATION_HEADER_ACTIONS_STYLE}>
             <ArkmeConversationHeaderIconButton
-              label="按日期查看发给自己"
+              label={tr("按日期查看发给自己")}
               buttonRef={selfCalendarButtonRef}
               hasPopup="dialog"
               expanded={selfCalendarOpen}
@@ -7393,7 +7397,7 @@ export function ArkmeSurface({
                 invoke: () => { startConversationExport(source) },
               })]}
               anchor={selfMenuButtonRef}
-              label="更多发给自己操作"
+              label={tr("更多发给自己操作")}
               onClose={() => { setSelfMenuOpen(false) }}
               trigger={{
                 open: selfMenuOpen,
@@ -7443,7 +7447,7 @@ export function ArkmeSurface({
           <IconLoadingOutline16 className="arkme-icon-spin" />
           <span style={styles.conversationExportProgressName}>{conversationExport.sourceName}</span>
           <span style={styles.conversationExportProgressCount}>{conversationExport.processed > 0
-            ? `已处理 ${String(conversationExport.processed)} 条`
+            ? tr("已处理 {v0} 条", { v0: String(conversationExport.processed) })
             : '正在准备'}</span>
         </div>}
         {conversationExportToast !== undefined && <Toast
@@ -7492,6 +7496,8 @@ export function ArkmeSurface({
             recordingImportStatus={recordingImportStatus}
           />
           : ui.mode === 'world' ? <ArkmeWorldSurface
+            key={`world:${auth?.environment}:${auth?.userId}:${ui.worldNavigationRevision ?? 0}`}
+            initialScope={ui.worldInitialScope ?? 'all'}
             {...(ui.worldTarget === undefined ? {} : { target: ui.worldTarget })}
             {...(auth?.status !== 'authenticated' ? {} : { currentUserId: auth.userId })}
             onBackToWorld={() => { arkmeUi.backFromWorld() }}
@@ -7516,7 +7522,7 @@ export function ArkmeSurface({
             onShareExit={() => { arkmeUi.dismissExtensionShare() }}
             onPrivateChatOpened={activateSource}
           />
-          : ui.mode === 'voiceprint' ? <ArkmeVoiceprintSurface />
+          : ui.mode === 'voiceprint' ? <ArkmeVoiceprintSurface onBack={() => { arkmeUi.showRecordings() }} />
           : ui.mode === 'arko' ? <ArkmeArkoSurface key={arkmeArkoSurfaceKey(auth)} />
           : botConversationVisible && ui.selectedBot !== undefined ? <ArkmeBotConversationSurface
             key={ui.selectedBot.botRef} bot={ui.selectedBot} onConversationActivity={bot => { arkmeUi.openBotConversation(bot) }} onDeleted={() => { arkmeUi.showHarness() }}
@@ -7526,9 +7532,9 @@ export function ArkmeSurface({
               ? <div role="alert" style={styles.loading}>
                 <div style={styles.error}>{activeSelfSourcesResolution.message}</div>
                 <button data-arkme-feedback="neutral" type="button" style={{ ...styles.retry, marginTop: 8, fontSize: 12 }}
-                  onClick={() => { setSelfSourcesRetryRevision(value => value + 1) }}>重试</button>
+                  onClick={() => { setSelfSourcesRetryRevision(value => value + 1) }}>{tr("重试")}</button>
               </div>
-              : <div role="status" style={styles.loading}>正在加载发给自己的内容…</div>}
+              : <div role="status" style={styles.loading}>{tr("正在加载发给自己的内容…")}</div>}
           </div> : <ArkmeWideConversation
             enabled={active && activeConversation && (source.kind === 'private_chat' || source.kind === 'group_chat')}
             scopeKey={conversationKey} viewportRef={bodyRef} controlsHidden={activeSelectMode !== undefined}>
@@ -7543,7 +7549,7 @@ export function ArkmeSurface({
                 setError('')
                 setTimelineLoadingKey(conversationKey)
                 setForegroundReadRevision(value => value + 1)
-              }}>重新加载</button>}
+              }}>{tr("重新加载")}</button>}
             {interwovenWindow.prelude.length > 0 && <ArkmeInterwovenPrelude
               key={conversationKey} moments={interwovenWindow.prelude} onOpen={openMomentDetail} />}
             <div ref={sentinelRef} style={styles.sentinel} />
@@ -7553,12 +7559,12 @@ export function ArkmeSurface({
               </div>}
               {nextCursor !== undefined && <button data-arkme-feedback="neutral" type="button" style={styles.retry} disabled={loadingOlder}
                 onClick={() => { void loadOlderHistory() }}>
-                {loadingOlder ? '正在加载更早内容…' : olderLoadError === '' ? '继续加载更早消息' : '重试加载更早消息'}
+                {loadingOlder ? tr("正在加载更早内容…") : olderLoadError === '' ? '继续加载更早消息' : '重试加载更早消息'}
               </button>}
             </div>}
             {timelineSkeletonKey === conversationKey && displayRows.length === 0 && <div
               role="status"
-              aria-label="正在加载会话内容"
+              aria-label={tr("正在加载会话内容")}
               style={styles.timelineSkeleton}
             >{[58, 44, 66, 50, 61].map((width, index) => <div
               key={`${width}:${index}`}
@@ -7733,7 +7739,7 @@ export function ArkmeSurface({
                             }}
                             onContextMenu={event => { openMessageMenu(item, event, event.currentTarget) }}
                             data-arkme-message-direction={item.isMe ? 'self' : 'other'}
-                            aria-label={item.callRecord ? '打开通话详情' : isSharedRecordingCard ? '打开录音详情' : '打开快记详情'}
+                            aria-label={item.callRecord ? '打开通话详情' : isSharedRecordingCard ? '打开录音详情' : tr("打开快记详情")}
                           >{polishStatus !== '' && <span style={styles.polishMeta}>
                             {item.aiPolish?.state === 'failed' ? <button data-arkme-feedback="neutral"
                               type="button" style={styles.retry} onClick={event => { event.stopPropagation(); void retryAiPolish(item) }}
@@ -7770,23 +7776,23 @@ export function ArkmeSurface({
                               }}
                             />
                             {!isSharedRecordingCard && <ArkmeTimelineAgentSourceBadge item={item} />}
-                            {reeditSubmissions.jobs.filter(job => job.itemUid === item.itemUid && (job.state === 'failed' || job.state === 'uncertain')).map(job => <div key={job.submissionId} role="status" aria-label="重新编辑保存状态" style={styles.polishMeta}>
-                              {job.state === 'failed' ? `保存失败：${job.error ?? '请恢复编辑后重试'}` : '保存结果待确认'}
-                              {job.state === 'failed' && <button data-arkme-feedback="neutral" type="button" style={styles.retry} onClick={event => { event.stopPropagation(); void openRecordReedit(item) }}>恢复编辑</button>}
-                              {job.state === 'uncertain' && <button data-arkme-feedback="neutral" type="button" style={styles.retry} onClick={event => { event.stopPropagation(); void reeditSubmissions.refresh(true).catch(caught => setError(errorMessage(caught))) }}>核对结果</button>}
+                            {reeditSubmissions.jobs.filter(job => job.itemUid === item.itemUid && (job.state === 'failed' || job.state === 'uncertain')).map(job => <div key={job.submissionId} role="status" aria-label={tr("重新编辑保存状态")} style={styles.polishMeta}>
+                              {job.state === 'failed' ? tr("保存失败：{v0}", { v0: job.error ?? '请恢复编辑后重试' }) : '保存结果待确认'}
+                              {job.state === 'failed' && <button data-arkme-feedback="neutral" type="button" style={styles.retry} onClick={event => { event.stopPropagation(); void openRecordReedit(item) }}>{tr("恢复编辑")}</button>}
+                              {job.state === 'uncertain' && <button data-arkme-feedback="neutral" type="button" style={styles.retry} onClick={event => { event.stopPropagation(); void reeditSubmissions.refresh(true).catch(caught => setError(errorMessage(caught))) }}>{tr("核对结果")}</button>}
                             </div>)}
                           </div>
-                          const fileSendStatus = fileTasks.tasks.filter(task => (task.result?.itemUid ?? task.recordUid) === item.itemUid && task.state !== 'sent' && fileTaskShowsInlineStatus(task)).map(task => <div key={task.taskRef} role="status" aria-label="附件发送状态" data-arkme-file-send-status={task.state} style={{ fontSize: 12, lineHeight: 1.5, color: arkmeTheme.secondary, maxWidth: '100%', overflowWrap: 'anywhere', textAlign: item.isMe ? 'right' : 'left' }}>
+                          const fileSendStatus = fileTasks.tasks.filter(task => (task.result?.itemUid ?? task.recordUid) === item.itemUid && task.state !== 'sent' && fileTaskShowsInlineStatus(task)).map(task => <div key={task.taskRef} role="status" aria-label={tr("附件发送状态")} data-arkme-file-send-status={task.state} style={{ fontSize: 12, lineHeight: 1.5, color: arkmeTheme.secondary, maxWidth: '100%', overflowWrap: 'anywhere', textAlign: item.isMe ? 'right' : 'left' }}>
                               {task.error ?? (task.state === 'sending' ? '正在发送…' : task.state === 'queued' ? '等待上传' : '正在上传')}
-                              {task.state === 'failed' && task.retryable !== false && !directAdmission.blocked && <button data-arkme-feedback="neutral" type="button" onClick={event => { event.stopPropagation(); void callArkme('files.send.retry', { taskRef: task.taskRef }).then(fileTasks.refresh).catch(caught => setError(errorMessage(caught))) }}>重试</button>}
-                              {task.state === 'uncertain' && <button data-arkme-feedback="neutral" type="button" onClick={event => { event.stopPropagation(); void callArkme<ArkmeFileSendTask>('files.send.reconcile', { taskRef: task.taskRef }).then(value => { fileTasks.refresh(); if (value.state === 'uncertain') setError('最近的会话记录还无法确认发送结果，请先核对原会话，不要重复发送') }).catch(caught => setError(errorMessage(caught))) }}>核对发送结果</button>}
-                              {(task.state === 'failed' || task.state === 'uncertain') && <>{' '}<button data-arkme-feedback="danger" type="button" aria-label="清除发送记录" onClick={event => {
+                              {task.state === 'failed' && task.retryable !== false && !directAdmission.blocked && <button data-arkme-feedback="neutral" type="button" onClick={event => { event.stopPropagation(); void callArkme('files.send.retry', { taskRef: task.taskRef }).then(fileTasks.refresh).catch(caught => setError(errorMessage(caught))) }}>{tr("重试")}</button>}
+                              {task.state === 'uncertain' && <button data-arkme-feedback="neutral" type="button" onClick={event => { event.stopPropagation(); void callArkme<ArkmeFileSendTask>('files.send.reconcile', { taskRef: task.taskRef }).then(value => { fileTasks.refresh(); if (value.state === 'uncertain') setError('最近的会话记录还无法确认发送结果，请先核对原会话，不要重复发送') }).catch(caught => setError(errorMessage(caught))) }}>{tr("核对发送结果")}</button>}
+                              {(task.state === 'failed' || task.state === 'uncertain') && <>{' '}<button data-arkme-feedback="danger" type="button" aria-label={tr("清除发送记录")} onClick={event => {
                                 event.stopPropagation()
                                 if (task.state === 'uncertain' && !window.confirm('发送结果仍未确认。清除记录不会撤回可能已发送的消息，是否继续？')) return
                                 void callArkme('files.send.discard', { taskRef: task.taskRef })
                                   .then(fileTasks.refresh)
                                   .catch(caught => setError(errorMessage(caught)))
-                              }}>清除</button></>}
+                              }}>{tr("清除")}</button></>}
                             </div>)
                           const messageContentLine = isSharedRecordingCard
                             ? messageBubble
@@ -7915,7 +7921,7 @@ export function ArkmeSurface({
                 </span>)}
               </span>
               <span style={styles.forwardSuccessText}>{forwardSuccessFeedback.message}</span>
-              <span style={styles.forwardSuccessAction}>去看看</span>
+              <span style={styles.forwardSuccessAction}>{tr("去看看")}</span>
             </button>
           </div>}
           {messageActionStatus !== '' && <div role="status" aria-live="polite" style={styles.messageActionToast}>{messageActionStatus}</div>}
@@ -7956,7 +7962,7 @@ export function ArkmeSurface({
               error={activeRecordReeditComposer.error}
               confirmTone={activeRecordReeditComposer.conflict === 'draft' ? 'primary' : 'danger'}
               confirmLabel={activeRecordReeditComposer.conflict === 'draft' ? '重新载入' : '放弃并重新载入'}
-              busyLabel="正在重新载入…"
+              busyLabel={tr("正在重新载入…")}
               onClose={() => setRecordReeditComposer(current => sameArkmeRecordReeditSession(current, activeRecordReeditComposer) && !current.busy
                 ? { ...current, recoveryConfirmation: false } : current)}
               onConfirm={() => { void recoverRecordReedit() }}
@@ -7969,7 +7975,7 @@ export function ArkmeSurface({
                 : { 'data-arkme-composer-reedit-target': 'true' })}
             >
               <div style={styles.composerExtensionTargetBody}>
-                {activeRecordReeditComposer !== undefined && <div style={styles.composerReeditLabel}>重新编辑:</div>}
+                {activeRecordReeditComposer !== undefined && <div style={styles.composerReeditLabel}>{tr("重新编辑:")}</div>}
                 {(activeComposerTargetItem.textContent.trim() || activeComposerTargetItem.title.trim()) !== ''
                   && <div style={styles.composerExtensionTargetText}><ArkmeRichText text={activeComposerTargetItem.textContent.trim() || activeComposerTargetItem.title.trim()} presentation="preview" /></div>}
                 {(activeComposerTargetItem.contentBlocks?.length ?? 0) > 0 && <div style={styles.composerExtensionTargetFiles}>
@@ -8008,7 +8014,7 @@ export function ArkmeSurface({
               }}
             >
             {composerResize.handle}
-            {addMenuOpen && <ArkmeActionMenu label="添加内容" side="top"
+            {addMenuOpen && <ArkmeActionMenu label={tr("添加内容")} side="top"
               getAnchorRect={() => addMenuTriggerRef.current?.getBoundingClientRect() ?? null}
               onClose={() => setAddMenuOpen(false)} actions={[
                 { id: 'files', label: '添加附件', icon: <IconPaperclipOutline16 />, onSelect: () => { setAddMenuOpen(false); fileInputRef.current?.click() } },
@@ -8021,9 +8027,9 @@ export function ArkmeSurface({
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }}>{pendingArticle.article.kind === 'existing' ? pendingArticle.article.detail.title : pendingArticle.article.draft.title}</div>
                 <div style={{ color: arkmeTheme.secondary, fontSize: 12, marginTop: 4 }}>{pendingArticle.sending ? '长文发送中…' : '长文将单独发送，原文字和附件保留'}</div>
-                {pendingArticle.error && <div role="alert" style={{ color: arkmeTheme.danger, fontSize: 12 }}>{pendingArticle.error} · 点击发送重试</div>}
+                {pendingArticle.error && <div role="alert" style={{ color: arkmeTheme.danger, fontSize: 12 }}>{pendingArticle.error} {tr("· 点击发送重试")}</div>}
               </div>
-              <button type="button" aria-label="移除待发送长文" disabled={pendingArticle.sending} style={{ color: arkmeTheme.secondary, background: 'transparent', border: 0, cursor: 'pointer', fontSize: 20 }} onClick={() => { if (articleDraftKey) composerArticleStore.remove(articleDraftKey) }}>×</button>
+              <button type="button" aria-label={tr("移除待发送长文")} disabled={pendingArticle.sending} style={{ color: arkmeTheme.secondary, background: 'transparent', border: 0, cursor: 'pointer', fontSize: 20 }} onClick={() => { if (articleDraftKey) composerArticleStore.remove(articleDraftKey) }}>×</button>
             </div>}
             {visibleComposerAttachments.length > 0 && <ArkmeAttachmentStrip attachments={visibleComposerAttachments} disabled={composerFilesDisabled}
               onMove={(from, to) => {
@@ -8063,11 +8069,11 @@ export function ArkmeSurface({
                 if (attachment.localFile !== undefined) void callArkme('files.local.remove', { fileRef: attachment.localFile.fileRef }).catch(caught => setError(errorMessage(caught)))
               }}
             />}
-            {activeRecordReeditComposer?.attachments.some(attachment => attachment.unavailable) && <div role="status" style={styles.error}>部分附件不可用，请移除后重新添加</div>}
+            {activeRecordReeditComposer?.attachments.some(attachment => attachment.unavailable) && <div role="status" style={styles.error}>{tr("部分附件不可用，请移除后重新添加")}</div>}
             {activeConversation && draftPreview !== undefined && typeof document !== 'undefined' && createPortal(<ArkmeMediaPreview selected={draftPreview} blocks={activeRecordReeditComposer === undefined
               ? attachments.flatMap(attachment => attachment.localFile === undefined ? [] : [localFileBlock(attachment.localFile)])
               : activeRecordReeditComposer.attachments.flatMap(attachment => { const block = arkmeRecordReeditAttachmentBlock(attachment); return block === undefined ? [] : [block] })} onSelect={setDraftPreview} onClose={() => setDraftPreview(undefined)} openLocalFile={false} />, document.body)}
-            {activeRecordReeditComposer === undefined && hashTagTrigger !== undefined && <div ref={hashTagSuggestionListRef} style={styles.mentionSuggestions} role="listbox" aria-label="选择标签">
+            {activeRecordReeditComposer === undefined && hashTagTrigger !== undefined && <div ref={hashTagSuggestionListRef} style={styles.mentionSuggestions} role="listbox" aria-label={tr("选择标签")}>
               {hashTagCandidates.length === 0 && !hashTagError
                 ? <div style={styles.mentionSuggestionsEmpty}>{hashTagLoading ? '正在加载标签…' : '暂无匹配标签，可继续输入创建新标签'}</div>
                 : hashTagCandidates.map((item, index) => <button data-arkme-feedback="neutral"
@@ -8088,17 +8094,16 @@ export function ArkmeSurface({
                   <span style={{ ...styles.mentionSuggestionBotAvatar, flex: 'none', fontWeight: 600 }} aria-hidden>#</span>
                   <span style={styles.mentionSuggestionText}>
                     <span style={styles.mentionSuggestionName}>{item.tagText}</span>
-                    <span style={styles.mentionSuggestionSecondary}>使用 {item.recordCount} 次</span>
+                    <span style={styles.mentionSuggestionSecondary}>{tr("使用")} {item.recordCount} {tr("次")}</span>
                   </span>
                 </button>)}
-              {hashTagError && <div role="status" style={styles.mentionSuggestionsEmpty}>
-                标签加载失败，<button type="button" onMouseDown={event => event.preventDefault()} onClick={() => hashTagRetryRef.current?.()}>重试</button>
+              {hashTagError && <div role="status" style={styles.mentionSuggestionsEmpty}>{tr("标签加载失败，")}<button type="button" onMouseDown={event => event.preventDefault()} onClick={() => hashTagRetryRef.current?.()}>{tr("重试")}</button>
               </div>}
             </div>}
-            {mentionTrigger !== undefined && <div style={styles.mentionSuggestions} role="listbox" aria-label="选择要 @ 的对象">
+            {mentionTrigger !== undefined && <div style={styles.mentionSuggestions} role="listbox" aria-label={tr("选择要 @ 的对象")}>
               <ArkmeMentionSuggestionThemeStyles />
               {mentionCandidates.length === 0
-                ? <div style={styles.mentionSuggestionsEmpty}>暂无可 @ 的对象</div>
+                ? <div style={styles.mentionSuggestionsEmpty}>{tr("暂无可 @ 的对象")}</div>
                 : mentionCandidates.map((member, index) => <ArkmeMentionSuggestionRow
                   key={arkmeMentionCandidateKey(member)}
                   candidate={member}
@@ -8220,7 +8225,7 @@ export function ArkmeSurface({
                 }
               }} />
             </div>
-            <div data-arkme-composer-footer="tools" style={styles.tools}><div style={styles.toolGroup}><button data-arkme-feedback="neutral" ref={addMenuTriggerRef} type="button" style={styles.plus} onPointerDown={event => event.stopPropagation()} aria-label="添加内容" aria-haspopup="menu" aria-expanded={addMenuOpen} disabled={composerFileAddingDisabled} onClick={() => { setAddMenuOpen(value => !value) }}>{(activeRecordReeditComposer === undefined ? preparingFiles : preparingReeditFiles) ? <ArkmeFilePreparingIndicator /> : '+'}</button><ArkmeEmojiPicker
+            <div data-arkme-composer-footer="tools" style={styles.tools}><div style={styles.toolGroup}><button data-arkme-feedback="neutral" ref={addMenuTriggerRef} type="button" style={styles.plus} onPointerDown={event => event.stopPropagation()} aria-label={tr("添加内容")} aria-haspopup="menu" aria-expanded={addMenuOpen} disabled={composerFileAddingDisabled} onClick={() => { setAddMenuOpen(value => !value) }}>{(activeRecordReeditComposer === undefined ? preparingFiles : preparingReeditFiles) ? <ArkmeFilePreparingIndicator /> : '+'}</button><ArkmeEmojiPicker
               key={`emoji-picker:${authenticatedAccountKey}:${conversationOverlayKey}`}
               accountKey={authenticatedAccountKey}
               disabled={activeSelectMode !== undefined || preparingFiles || directAdmission.blocked || activeRecordReeditComposer !== undefined}
@@ -8255,12 +8260,11 @@ export function ArkmeSurface({
               <span data-arkme-composer-footer="hint"
                 aria-hidden={!composerInputFocused}
                 style={{ ...styles.composerHint, visibility: composerInputFocused ? 'visible' : 'hidden' }}
-                title="Enter发送 / Shift+Enter换行">
-                Enter发送<span className="arkme-composer-shortcut-details"> / Shift+Enter换行</span>
+                title={tr("Enter发送 / Shift+Enter换行")}>{tr("Enter发送")}<span className="arkme-composer-shortcut-details"> {tr("/ Shift+Enter换行")}</span>
               </span>
               <ArkmeComposerSendButton
                 disabled={!canSend}
-                ariaLabel={activeRecordReeditComposer === undefined ? pendingArticle ? '发送长文' : '发送消息' : '保存重新编辑'}
+                ariaLabel={activeRecordReeditComposer === undefined ? pendingArticle ? '发送长文' : tr("发送消息") : '保存重新编辑'}
                 onClick={() => { void send() }}
               />
             </div></div>
@@ -8274,15 +8278,15 @@ export function ArkmeSurface({
             role="status" style={{ padding: '6px 16px', color: arkmeTheme.secondary, fontSize: 12 }}
           >{selectedMessageCount > 100 ? `已选择 ${selectedMessageCount} 条消息，批量操作最多支持 100 条，请减少选择后操作`
             : '选中的消息包含暂不支持复制链接或转发的内容，可取消这些消息后操作'}</div>}
-          {activeSelectMode !== undefined && <div style={styles.selectBar} role="toolbar" aria-label={`已选择 ${selectedMessageCount} 条消息`}>
+          {activeSelectMode !== undefined && <div style={styles.selectBar} role="toolbar" aria-label={tr("已选择 {v0} 条消息", { v0: selectedMessageCount })}>
             {source !== undefined && isArkmeSelfWorkspaceSource(source) && <button data-arkme-feedback="neutral"
-              type="button" aria-label="指定主题" style={styles.selectBarButton}
+              type="button" aria-label={tr("指定主题")} style={styles.selectBarButton}
               disabled={!canAssignRecordTopics(selectedMessageItems) || selectedMessageItems.length !== selectedMessageCount}
               onClick={event => {
                 if (selectedMessageItems.length !== selectedMessageCount) return
                 openRecordTopicAssignment(selectedMessageItems, event.currentTarget)
               }}
-            ><span style={styles.selectBarIconTile}><ArkmeSelectActionIcon kind="assign" size={20} /></span><span style={styles.selectBarLabel}>指定主题</span></button>}
+            ><span style={styles.selectBarIconTile}><ArkmeSelectActionIcon kind="assign" size={20} /></span><span style={styles.selectBarLabel}>{tr("指定主题")}</span></button>}
             {(() => {
               const copyTextEnabled = arkmeCanCopySelectedMessageText(selectedMessageItems.length, messageActionBusy !== undefined)
               return <button data-arkme-feedback="neutral"
@@ -8313,13 +8317,13 @@ export function ArkmeSurface({
               disabled={!selectedMessagesSupportSnapshotBatch || messageActionBusy !== undefined}
               onClick={() => { openForwardTargetPicker() }}
             ><span style={styles.selectBarIconTile}><ArkmeSelectActionIcon kind="forward" /></span><span style={styles.selectBarLabel}>{messageActionBusy === 'forward' ? '转发中' : ARKME_MESSAGE_SELECT_ACTION_LABELS[2]}</span></button>
-            <button data-arkme-feedback="danger" type="button" aria-label="删除" title={selectedMessagesCanDelete ? '删除' : '包含他人或暂不可删除的快记'}
+            <button data-arkme-feedback="danger" type="button" aria-label={tr("删除")} title={selectedMessagesCanDelete ? tr("删除") : '包含他人或暂不可删除的快记'}
               style={{ ...styles.selectBarButton, ...(!selectedMessagesCanDelete || messageActionBusy !== undefined ? styles.selectBarButtonDisabled : {}) }}
               disabled={!selectedMessagesCanDelete || messageActionBusy !== undefined}
               onClick={() => { if (source && selectedMessagesCanDelete && messageActionBusy === undefined) setRecordDeletion({
                 scopeKey: topicAssignmentScopeKey, sourceRef: source.sourceRef, items: [...selectedMessageItems],
               }) }}
-            ><span style={styles.selectBarIconTile}><Trash size={22} /></span><span style={styles.selectBarLabel}>删除</span></button>
+            ><span style={styles.selectBarIconTile}><Trash size={22} /></span><span style={styles.selectBarLabel}>{tr("删除")}</span></button>
             <button data-arkme-feedback="neutral"
               type="button"
               style={{
@@ -8347,12 +8351,12 @@ export function ArkmeSurface({
           >
             <header style={styles.forwardTargetHeader}>
               <span aria-hidden />
-              <h3 id="arkme-forward-target-title" style={styles.forwardTargetTitle}>转发给</h3>
+              <h3 id="arkme-forward-target-title" style={styles.forwardTargetTitle}>{tr("转发给")}</h3>
               <button data-arkme-feedback="neutral"
                 type="button"
                 style={styles.forwardTargetClose}
                 disabled={messageActionBusy === 'forward'}
-                aria-label="关闭转发对象选择"
+                aria-label={tr("关闭转发对象选择")}
                 onClick={() => { if (messageActionBusy !== 'forward') setForwardTargetPicker(undefined) }}
               >×</button>
             </header>
@@ -8369,15 +8373,15 @@ export function ArkmeSurface({
               />
             </div>
             <div style={styles.forwardTargetBody}>
-              <ul style={styles.forwardTargetList} aria-label="转发对象列表">
+              <ul style={styles.forwardTargetList} aria-label={tr("转发对象列表")}>
                 {(forwardSelfTarget !== undefined || forwardTargetPicker.keyword.trim() === '') && <li key="send_to_self">
                   {forwardSelfTarget !== undefined ? renderForwardTargetButton(forwardSelfTarget) : <div
-                    aria-disabled="true" aria-label="发给自己暂不可用" style={{ ...styles.forwardTargetRow, cursor: 'default' }}>
+                    aria-disabled="true" aria-label={tr("发给自己暂不可用")} style={{ ...styles.forwardTargetRow, cursor: 'default' }}>
                     <span style={styles.forwardTargetCheck} aria-hidden />
                     <ArkmeDirectorySourceAvatar source={{ kind: 'send_to_self' }} size={38} />
                     <span style={styles.forwardTargetText}>
-                      <span style={styles.forwardTargetName}>发给自己</span>
-                      <span style={styles.forwardTargetMeta}>默认分类</span>
+                      <span style={styles.forwardTargetName}>{tr("发给自己")}</span>
+                      <span style={styles.forwardTargetMeta}>{tr("默认分类")}</span>
                     </span>
                   </div>}
                 </li>}
@@ -8391,7 +8395,7 @@ export function ArkmeSurface({
             </div>
             {forwardSelectedTargets.length > 0 && <footer style={styles.forwardTargetFooter}>
               <div style={styles.forwardTargetRecipients}>
-                <span>发送给：</span>
+                <span>{tr("发送给：")}</span>
                 <span style={styles.forwardTargetAvatarStack}>
                   {forwardSelectedTargets.slice(0, 6).map(target => <ArkmeDirectorySourceAvatar
                     key={target.sourceRef}
@@ -8411,7 +8415,7 @@ export function ArkmeSurface({
                   type="button"
                   style={styles.forwardTargetPreviewClose}
                   disabled={messageActionBusy === 'forward'}
-                  aria-label="关闭转发对象选择"
+                  aria-label={tr("关闭转发对象选择")}
                   onClick={() => { if (messageActionBusy !== 'forward') setForwardTargetPicker(undefined) }}
                 ><ArkmeForwardCloseBorderIcon /></button>
               </div>
@@ -8420,8 +8424,8 @@ export function ArkmeSurface({
                 <textarea
                   style={styles.forwardTargetCommentInput}
                   value={forwardTargetPicker.commentText}
-                  placeholder="说点什么..."
-                  aria-label="转发附言"
+                  placeholder={tr("说点什么...")}
+                  aria-label={tr("转发附言")}
                   disabled={messageActionBusy === 'forward'}
                   onChange={event => {
                     const commentText = event.currentTarget.value
@@ -8453,7 +8457,7 @@ export function ArkmeSurface({
           </section>
         </div>}
         {activeConversation && messageMenu !== undefined && messageMenuItem !== undefined && <ArkmeActionMenu
-          label="消息操作" point={{ x: messageMenu.left, y: messageMenu.top }} onClose={closeMessageMenu}
+          label={tr("消息操作")} point={{ x: messageMenu.left, y: messageMenu.top }} onClose={closeMessageMenu}
           actions={[
             { id: 'copy', label: ARKME_MESSAGE_ACTION_MENU_LABELS[0], icon: <ArkmeMessageActionIcon kind="copy" />, onSelect: () => { void copyMessageText(messageMenuItem) } },
             { id: 'link', label: ARKME_MESSAGE_ACTION_MENU_LABELS[1], icon: <ArkmeMessageActionIcon kind="link" />, disabled: arkmeTimelineMessageActionRef(messageMenuItem) === '', onSelect: () => { void copyMessageLink([messageMenuItem]) } },
@@ -8635,8 +8639,8 @@ export function ArkmeSurface({
         >
           <section style={styles.contactDialog} role="dialog" aria-modal="true" aria-labelledby="arkme-contact-add-title">
             <header style={styles.contactDialogHeader}>
-              <h2 id="arkme-contact-add-title" style={styles.contactDialogTitle}>添加联系人</h2>
-              <button data-arkme-feedback="neutral" type="button" style={styles.contactDialogClose} aria-label="关闭添加联系人" onClick={() => { arkmeUi.showConversations() }}>×</button>
+              <h2 id="arkme-contact-add-title" style={styles.contactDialogTitle}>{tr("添加联系人")}</h2>
+              <button data-arkme-feedback="neutral" type="button" style={styles.contactDialogClose} aria-label={tr("关闭添加联系人")} onClick={() => { arkmeUi.showConversations() }}>×</button>
             </header>
             <div style={styles.contactDialogBody}>
               <ArkmeContactAddSurface

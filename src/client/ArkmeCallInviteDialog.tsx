@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale, arkmeIntlLocale } from './locale.js'
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react'
 import { ArrowLeft } from '@phosphor-icons/react/dist/icons/ArrowLeft'
 import { PhoneCall } from '@phosphor-icons/react/dist/icons/PhoneCall'
@@ -28,9 +29,10 @@ const styles = {
   error: { margin: 0, color: arkmeTheme.danger, fontSize: 13, lineHeight: '20px' },
 } satisfies Record<string, CSSProperties>
 
-function errorText(error: unknown): string { return error instanceof Error ? error.message : '操作失败，请重试' }
+function errorText(error: unknown): string { return error instanceof Error ? error.message : tr("操作失败，请重试") }
 
 export function ArkmeCallInviteDialog({ onBack, onClose }: { onBack(): void; onClose(): void }) {
+  useArkmeLocale()
   const titleId = useId()
   const [mediaType, setMediaType] = useState<ArkmeOutgoingCallMediaType>('audio')
   const [link, setLink] = useState<ArkmeShareCallLink>()
@@ -97,32 +99,32 @@ export function ArkmeCallInviteDialog({ onBack, onClose }: { onBack(): void; onC
   return <ArkmeConfirmDialog layout="picker" titleId={titleId} title={title} busy={busy} closeWhileBusy onClose={onClose}>
     <div style={styles.body}>
       <header style={styles.header}>
-        <button type="button" style={styles.icon} aria-label="返回联系人选择" onClick={onBack}><ArrowLeft size={17} /></button>
+        <button type="button" style={styles.icon} aria-label={tr("返回联系人选择")} onClick={onBack}><ArrowLeft size={17} /></button>
         <h3 style={styles.title}>{title}</h3>
-        <button type="button" style={styles.icon} aria-label="关闭通话邀请" onClick={onClose}><X size={18} /></button>
+        <button type="button" style={styles.icon} aria-label={tr("关闭通话邀请")} onClick={onClose}><X size={18} /></button>
       </header>
       {link === undefined ? <>
-        <p style={styles.copy}>生成邀请链接，分享给对方后，对方可向你发起通话。</p>
-        <div style={styles.choices} role="group" aria-label="邀请通话类型">
+        <p style={styles.copy}>{tr("生成邀请链接，分享给对方后，对方可向你发起通话。")}</p>
+        <div style={styles.choices} role="group" aria-label={tr("邀请通话类型")}>
           {(['audio', 'video'] as const).map(type => <button key={type} type="button" aria-pressed={mediaType === type} disabled={busy}
             style={{ ...styles.choice, ...(mediaType === type ? styles.active : {}) }} onClick={() => { setMediaType(type); setError('') }}>
-            {type === 'audio' ? <PhoneCall size={24} /> : <VideoCamera size={24} />}{type === 'audio' ? '语音通话' : '视频通话'}
+            {type === 'audio' ? <PhoneCall size={24} /> : <VideoCamera size={24} />}{type === 'audio' ? tr("语音通话") : tr("视频通话")}
           </button>)}
         </div>
         <button type="button" disabled={busy} style={{ ...styles.button, ...styles.primary, opacity: busy ? .6 : 1 }} onClick={() => { void create() }}>{busy ? '正在准备邀请…' : '生成邀请链接'}</button>
       </> : <>
         <dl style={styles.meta}>
-          <div style={styles.row}><dt>通话类型</dt><dd style={{ margin: 0 }}>{link.mediaType === 'video' ? '视频通话' : '语音通话'}</dd></div>
-          <div style={styles.row}><dt>有效期</dt><dd style={{ margin: 0 }}>{expired ? '已过期' : '30 分钟内可重复呼叫'}</dd></div>
-          <div style={styles.row}><dt>失效时间</dt><dd style={{ margin: 0 }}>{new Date(link.expiresAtMillis).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</dd></div>
+          <div style={styles.row}><dt>{tr("通话类型")}</dt><dd style={{ margin: 0 }}>{link.mediaType === 'video' ? tr("视频通话") : tr("语音通话")}</dd></div>
+          <div style={styles.row}><dt>{tr("有效期")}</dt><dd style={{ margin: 0 }}>{expired ? '已过期' : '30 分钟内可重复呼叫'}</dd></div>
+          <div style={styles.row}><dt>{tr("失效时间")}</dt><dd style={{ margin: 0 }}>{new Date(link.expiresAtMillis).toLocaleString(arkmeIntlLocale(), { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })}</dd></div>
         </dl>
-        <textarea aria-label="通话邀请链接" style={styles.link} readOnly value={link.callUrl} onFocus={event => { event.currentTarget.select() }} />
+        <textarea aria-label={tr("通话邀请链接")} style={styles.link} readOnly value={link.callUrl} onFocus={event => { event.currentTarget.select() }} />
         {expired ? <button type="button" disabled={busy} style={{ ...styles.button, ...styles.primary }} onClick={() => { void create() }}>{busy ? '正在生成…' : '重新生成邀请链接'}</button>
           : <div style={styles.choices}>
-            <button type="button" style={styles.button} onClick={() => { void share(false) }}>复制链接</button>
-            <button type="button" style={{ ...styles.button, ...styles.primary }} onClick={() => { void share(true) }}>分享邀请</button>
+            <button type="button" style={styles.button} onClick={() => { void share(false) }}>{tr("复制链接")}</button>
+            <button type="button" style={{ ...styles.button, ...styles.primary }} onClick={() => { void share(true) }}>{tr("分享邀请")}</button>
           </div>}
-        <p style={styles.hint}>可关闭此弹窗。保持桌面端登录并运行，即可接听对方来电。</p>
+        <p style={styles.hint}>{tr("可关闭此弹窗。保持桌面端登录并运行，即可接听对方来电。")}</p>
       </>}
       {status !== '' && <p role="status" style={styles.hint}>{status}</p>}
       {error !== '' && <p role="alert" style={styles.error}>{error}</p>}

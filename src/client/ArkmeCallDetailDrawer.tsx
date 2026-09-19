@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale, arkmeIntlLocale } from './locale.js'
 import { ARKME_CONVERSATION_HEADER_HEIGHT } from './arkme-layout.js'
 import { ArkmeRightPanelHeader } from './ArkmeRightPanelHeader.js'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
@@ -25,10 +26,11 @@ export function callDetailDuration(seconds: number | undefined): string {
 
 function startTime(millis: number): string {
   if (!Number.isFinite(millis) || millis <= 0) return '--:--'
-  return new Date(millis).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+  return new Date(millis).toLocaleTimeString(arkmeIntlLocale(), { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
 export function ArkmeCallDetailDrawer({ item, onClose, initialVideoUrl }: { item: ArkmeTimelineItem; onClose: () => void; initialVideoUrl?: string | undefined }) {
+  useArkmeLocale()
   const [detail, setDetail] = useState<ArkmeCallDetail>()
   const [error, setError] = useState('')
   const [revision, setRevision] = useState(0)
@@ -82,16 +84,16 @@ export function ArkmeCallDetailDrawer({ item, onClose, initialVideoUrl }: { item
   const video = mediaType === 'video'
   const icon = `${video ? 'video' : 'call'}-${item.callRecord?.direction ?? (item.isMe ? 'outgoing' : 'incoming')}-linear.svg`
   const iconColor = (detail?.acceptedAtMillis ?? 0) > 0 ? arkmeTheme.accent : arkmeTheme.danger
-  return <aside ref={panel} role="dialog" aria-label="通话详情" data-arkme-call-detail="true" style={styles.drawer}>
-    <ArkmeRightPanelHeader title="通话详情" onClose={onClose} closeLabel="关闭通话详情" closeRef={closeButton} />
+  return <aside ref={panel} role="dialog" aria-label={tr("通话详情")} data-arkme-call-detail="true" style={styles.drawer}>
+    <ArkmeRightPanelHeader title={tr("通话详情")} onClose={onClose} closeLabel={tr("关闭通话详情")} closeRef={closeButton} />
     <div style={styles.overview}>
-      <span style={styles.cell}><span aria-hidden style={{ width: 12, height: 12, flex: '0 0 12px', background: iconColor, mask: `url("/arkme-self/api/call/${icon}") center / contain no-repeat`, WebkitMask: `url("/arkme-self/api/call/${icon}") center / contain no-repeat` }} />{video ? '视频通话' : '语音通话'}</span>
+      <span style={styles.cell}><span aria-hidden style={{ width: 12, height: 12, flex: '0 0 12px', background: iconColor, mask: `url("/arkme-self/api/call/${icon}") center / contain no-repeat`, WebkitMask: `url("/arkme-self/api/call/${icon}") center / contain no-repeat` }} />{video ? tr("视频通话") : tr("语音通话")}</span>
       <span style={{ ...styles.cell, justifyContent: 'center' }}><ClockIcon size={14} color={arkmeTheme.tertiary} aria-hidden />{startTime(detail?.startedAtMillis || item.callRecord?.startedAtMillis || item.sendAtMillis)}</span>
       <span style={{ ...styles.cell, justifyContent: 'flex-end' }}><TimerIcon size={14} color={arkmeTheme.tertiary} aria-hidden />{callDetailDuration(detail?.durationSeconds ?? item.callRecord?.durationSeconds)}</span>
     </div>
     <div style={styles.content} aria-busy={loading}>
-      {loading ? <div role="status" style={styles.state}>加载中…</div>
-        : error ? <div role="alert" style={styles.state}>{error}{callRef && <button data-arkme-feedback="neutral" type="button" style={styles.retry} onClick={() => { setRevision(value => value + 1) }}>重试</button>}</div>
+      {loading ? <div role="status" style={styles.state}>{tr("加载中…")}</div>
+        : error ? <div role="alert" style={styles.state}>{error}{callRef && <button data-arkme-feedback="neutral" type="button" style={styles.retry} onClick={() => { setRevision(value => value + 1) }}>{tr("重试")}</button>}</div>
           : <>
             {detail && <ArkmeCallDetailContent key={detail.callRef} compact detail={detail} detailState="ready" initialVideoUrl={initialVideoUrl} selectedItem={{
               callRef: detail.callRef,
@@ -100,7 +102,7 @@ export function ArkmeCallDetailDrawer({ item, onClose, initialVideoUrl }: { item
               acceptedAtMillis: detail.acceptedAtMillis,
               durationSeconds: detail.durationSeconds,
             }} />}
-            {(detail?.transcriptFailed || detail?.transcriptPending || detail?.summaryStatus === 'pending') && <button data-arkme-feedback="neutral" type="button" style={styles.retry} onClick={() => { setRevision(value => value + 1) }}>刷新</button>}
+            {(detail?.transcriptFailed || detail?.transcriptPending || detail?.summaryStatus === 'pending') && <button data-arkme-feedback="neutral" type="button" style={styles.retry} onClick={() => { setRevision(value => value + 1) }}>{tr("刷新")}</button>}
           </>}
     </div>
   </aside>

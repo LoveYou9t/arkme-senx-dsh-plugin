@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
@@ -163,9 +164,9 @@ function FileReceptionProgress({ reception, fileName, noun = '文件' }: { recep
   const percent = reception.totalBytes > 0 ? Math.max(0, Math.min(100, Math.round(reception.receivedBytes / reception.totalBytes * 100))) : undefined
   return <div style={{ width: 220, maxWidth: '100%', margin: '8px 0' }}>
     <div role="status" style={{ color: 'var(--dsw-alias-label-tertiary, #9097a1)', fontSize: 12, fontWeight: 500, fontVariantNumeric: 'tabular-nums' }}>
-      {percent === undefined ? `正在接收${noun}` : `正在接收${noun} ${percent}%`}
+      {percent === undefined ? tr("正在接收{v0}", { v0: noun }) : tr("正在接收{v0} {v1}%", { v0: noun, v1: percent })}
     </div>
-    <div role="progressbar" aria-label={`接收 ${fileName}`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}
+    <div role="progressbar" aria-label={tr("接收 {v0}", { v0: fileName })} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}
       style={{ position: 'relative', height: 4, borderRadius: 999, overflow: 'hidden', marginTop: 8 }}>
       <div style={{ position: 'absolute', inset: 0, background: 'var(--dsw-alias-state-business-primary, #3964fe)', opacity: .16 }} />
       {percent !== undefined && <div style={{ position: 'relative', height: '100%', width: `${percent}%`, borderRadius: 'inherit', background: 'var(--dsw-alias-state-business-primary, #3964fe)', transition: 'width 180ms ease-out' }} />}
@@ -367,11 +368,11 @@ function FileDownloadAction({ block, original, download, showStatus = true, hide
   const unavailable = localRef === undefined && block.originalRef === undefined
   const disabled = saving || unavailable
   return <>
-    {(!saved || !hideAfterSave) && <button type="button" aria-label={`下载${noun}`} title={`下载${noun}`} disabled={disabled} onClick={() => { void save() }}
+    {(!saved || !hideAfterSave) && <button type="button" aria-label={tr("下载{v0}", { v0: noun })} title={tr("下载{v0}", { v0: noun })} disabled={disabled} onClick={() => { void save() }}
       style={fileActionStateStyle(unavailable, saving)}>
       <ImageDownloadIcon />
     </button>}
-    {showStatus && saving && <span role="status">{reception.state === 'receiving' ? `正在接收${noun}` : '正在下载...'}</span>}
+    {showStatus && saving && <span role="status">{reception.state === 'receiving' ? tr("正在接收{v0}", { v0: noun }) : '正在下载...'}</span>}
     {showStatus && reception.error && <span role="alert">{reception.error}</span>}
     {showStatus && notice && <span role="status">{notice}</span>}
   </>
@@ -400,11 +401,12 @@ function ImageNavigationIcon({ direction }: { direction: 'left' | 'right' }) {
 }
 
 function ImageCopyAction({ block, sources, onNotice }: { block: ArkmeContentBlock; sources: ImageCopySources; onNotice?: ArkmeFileActionNoticeHandler | undefined }) {
+  useArkmeLocale()
   const { copying, copy } = useArkmeImageCopy(block, sources, onNotice)
   if (block.kind !== 'image') return null
   const unavailable = sources.localOriginalRef === undefined && sources.remoteOriginalRef === undefined && sources.previewUrl === undefined
   return (
-    <button type="button" aria-label="复制图片" title="复制图片" disabled={copying || unavailable} onClick={() => { void copy() }}
+    <button type="button" aria-label={tr("复制图片")} title={tr("复制图片")} disabled={copying || unavailable} onClick={() => { void copy() }}
       style={fileActionStateStyle(unavailable, copying)}>
       <ImageCopyIcon />
     </button>
@@ -419,6 +421,7 @@ export function ArkmeFileActionNavButton({ label, direction, disabled, onClick }
 }
 
 export function ArkmeFileActions({ block, original, copySourceUrl, onImageCopyNotice, showDownloadStatus = true, hideDownloadAfterSave = true, style }: { block: ArkmeContentBlock; original: ReturnType<typeof useArkmeOriginal>; copySourceUrl?: string | undefined; onImageCopyNotice?: ArkmeFileActionNoticeHandler | undefined; showDownloadStatus?: boolean; hideDownloadAfterSave?: boolean; style?: CSSProperties | undefined }) {
+  useArkmeLocale()
   const download = useArkmeFileDownload(block, original)
   const sources: ImageCopySources = {
     localOriginalRef: original.localRef ?? block.localFileRef,
@@ -437,6 +440,7 @@ export function ArkmeFileViewer({ block, onClose, blocks = [block], onSelect, op
   navigation?: ArkmePreviewNavigation | undefined
   block: ArkmeContentBlock; onClose: () => void; blocks?: ArkmeContentBlock[]; onSelect?: (block: ArkmeContentBlock) => void; openLocalFile?: boolean; forceDownload?: boolean
 }) {
+  useArkmeLocale()
   const original = useArkmeOriginal(block, block.kind === 'image')
   const download = useArkmeFileDownload(block, original)
   const nativeOpen = useArkmeNativeFileOpen(block, original, onClose)
@@ -487,7 +491,7 @@ export function ArkmeFileViewer({ block, onClose, blocks = [block], onSelect, op
   const contentMaxHeight = filePanel ? 'calc(65vh - 56px)' : '65vh'
   const mediaStyle = { width: '100%', maxHeight: contentMaxHeight, objectFit: 'contain' as const }
   return createPortal(<div style={{ position: 'fixed', inset: 0, zIndex: 11000, background: 'rgba(0,0,0,.72)', display: 'grid', placeItems: 'center', padding: 24 }} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
-    <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`文件预览 ${block.fileName}`} style={{ position: 'relative', width: showContent ? 'min(860px, 90vw)' : 'min(420px, 90vw)', maxHeight: '80vh', borderRadius: 16, padding: showContent ? '56px 20px 20px' : '48px 40px 32px', color: arkmeTheme.text, background: arkmeTheme.menu }} onKeyDown={event => {
+    <div ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label={tr("文件预览 {v0}", { v0: block.fileName })} style={{ position: 'relative', width: showContent ? 'min(860px, 90vw)' : 'min(420px, 90vw)', maxHeight: '80vh', borderRadius: 16, padding: showContent ? '56px 20px 20px' : '48px 40px 32px', color: arkmeTheme.text, background: arkmeTheme.menu }} onKeyDown={event => {
       if (event.key === 'Escape') { event.stopPropagation(); onClose() }
       if (event.key === 'Tab') {
         const focusable = panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],video[controls],audio[controls]')
@@ -496,17 +500,17 @@ export function ArkmeFileViewer({ block, onClose, blocks = [block], onSelect, op
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
       }
     }}>
-      <button type="button" aria-label="关闭文件预览" onClick={onClose} style={{ position: 'absolute', right: 12, top: 12, width: 32, height: 32, padding: 0, display: 'grid', placeItems: 'center', border: 0, borderRadius: 8, background: 'transparent', color: 'var(--dsw-alias-label-secondary, #646b76)', cursor: 'pointer' }}><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
+      <button type="button" aria-label={tr("关闭文件预览")} onClick={onClose} style={{ position: 'absolute', right: 12, top: 12, width: 32, height: 32, padding: 0, display: 'grid', placeItems: 'center', border: 0, borderRadius: 8, background: 'transparent', color: 'var(--dsw-alias-label-secondary, #646b76)', cursor: 'pointer' }}><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><path d="m6 6 12 12M18 6 6 18" /></svg></button>
       {!showContent ? <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 16 }}>
         <ArkmeFileIcon fileName={block.fileName} mimeType={block.mimeType} size={64} />
         <div style={{ fontSize: 16, overflowWrap: 'anywhere' }}>{block.fileName}</div>
-        <div style={{ fontSize: 14, color: 'var(--dsw-alias-label-tertiary, #9097a1)' }}>文件大小：{arkmeFileSize(block.size)}</div>
+        <div style={{ fontSize: 14, color: 'var(--dsw-alias-label-tertiary, #9097a1)' }}>{tr("文件大小：")}{arkmeFileSize(block.size)}</div>
         {original.reception.state === 'receiving' && original.localRef === undefined
           ? <FileReceptionProgress reception={original.reception} fileName={block.fileName} noun={receptionNoun} />
           : !filePanel && <button type="button" onClick={systemFile ? nativeOpen.open : preview} disabled={nativeOpen.opening || (original.localRef === undefined && block.originalRef === undefined)} style={{ ...primaryActionStyle, cursor: nativeOpen.opening ? 'progress' : 'pointer' }}>
             {systemFile
-              ? nativeOpen.opening ? '正在打开…' : original.localRef === undefined ? '接收文件' : '打开'
-              : original.localRef === undefined ? `接收${receptionNoun}` : '预览'}
+              ? nativeOpen.opening ? tr("正在打开…") : original.localRef === undefined ? '接收文件' : tr("打开")
+              : original.localRef === undefined ? tr("接收{v0}", { v0: receptionNoun }) : tr("预览")}
           </button>}
         {original.reception.error && <p role="alert">{original.reception.error}</p>}
         {nativeOpen.error && <p role="alert">{nativeOpen.error}</p>}
@@ -514,29 +518,29 @@ export function ArkmeFileViewer({ block, onClose, blocks = [block], onSelect, op
         : visualKind === 'image' ? <img src={url} alt={block.fileName} style={mediaStyle} />
           : visualKind === 'video' ? <video src={url} controls style={mediaStyle} />
             : block.mimeType.trim().toLowerCase().startsWith('audio/') && arkmeCanInlineLocalFile(block.mimeType, block.fileName) ? <audio src={url} controls />
-              : textFile ? <div style={{ maxHeight: contentMaxHeight, overflow: 'auto', overflowWrap: 'anywhere' }}>{text === undefined ? !error && <p role="status">正在加载文件...</p> : /\.(md|markdown)$/i.test(block.fileName) ? <MarkdownText text={text} {...markdownLabelProps} /> : <pre style={{ whiteSpace: 'pre-wrap' }}>{text}</pre>}</div>
+              : textFile ? <div style={{ maxHeight: contentMaxHeight, overflow: 'auto', overflowWrap: 'anywhere' }}>{text === undefined ? !error && <p role="status">{tr("正在加载文件...")}</p> : /\.(md|markdown)$/i.test(block.fileName) ? <MarkdownText text={text} {...markdownLabelProps} /> : <pre style={{ whiteSpace: 'pre-wrap' }}>{text}</pre>}</div>
                 : null}
       {filePanel && <div style={{ marginTop: 16 }}>
-        <div role="group" aria-label="文件操作" style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-          {!showContent && <button type="button" aria-label="打开文件" disabled={openBusy || unavailable} onClick={systemFile ? nativeOpen.open : preview}
-            style={{ ...filePanelActionStyle, opacity: openBusy || unavailable ? .5 : 1, cursor: openBusy ? 'progress' : unavailable ? 'default' : 'pointer' }}>打开</button>}
-          <button type="button" aria-label="另存为文件" disabled={download.saving || unavailable} onClick={() => { void download.save() }}
-            style={{ ...filePanelActionStyle, opacity: download.saving || unavailable ? .5 : 1, cursor: download.saving ? 'progress' : unavailable ? 'default' : 'pointer' }}>另存为</button>
-          <button type="button" aria-label="打开文件夹" disabled={nativeOpen.opening || original.localRef === undefined} onClick={nativeOpen.openFolder}
+        <div role="group" aria-label={tr("文件操作")} style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {!showContent && <button type="button" aria-label={tr("打开文件")} disabled={openBusy || unavailable} onClick={systemFile ? nativeOpen.open : preview}
+            style={{ ...filePanelActionStyle, opacity: openBusy || unavailable ? .5 : 1, cursor: openBusy ? 'progress' : unavailable ? 'default' : 'pointer' }}>{tr("打开")}</button>}
+          <button type="button" aria-label={tr("另存为文件")} disabled={download.saving || unavailable} onClick={() => { void download.save() }}
+            style={{ ...filePanelActionStyle, opacity: download.saving || unavailable ? .5 : 1, cursor: download.saving ? 'progress' : unavailable ? 'default' : 'pointer' }}>{tr("另存为")}</button>
+          <button type="button" aria-label={tr("打开文件夹")} disabled={nativeOpen.opening || original.localRef === undefined} onClick={nativeOpen.openFolder}
             title={original.localRef === undefined ? '请先打开或另存为文件' : '打开 Arkme 已接收文件所在的文件夹'}
-            style={{ ...filePanelActionStyle, opacity: nativeOpen.opening || original.localRef === undefined ? .5 : 1, cursor: nativeOpen.opening ? 'progress' : original.localRef === undefined ? 'default' : 'pointer' }}>打开文件夹</button>
+            style={{ ...filePanelActionStyle, opacity: nativeOpen.opening || original.localRef === undefined ? .5 : 1, cursor: nativeOpen.opening ? 'progress' : original.localRef === undefined ? 'default' : 'pointer' }}>{tr("打开文件夹")}</button>
         </div>
-        {nativeOpen.opening && <p role="status">正在打开…</p>}
+        {nativeOpen.opening && <p role="status">{tr("正在打开…")}</p>}
         {showContent && nativeOpen.error && <p role="alert">{nativeOpen.error}</p>}
-        {download.saving && <p role="status">正在保存...</p>}
+        {download.saving && <p role="status">{tr("正在保存...")}</p>}
         {download.notice && <p role="status">{download.notice}</p>}
       </div>}
-      {error && <div><p role="alert">{error}</p><button type="button" onClick={preview} style={filePanelActionStyle}>重试预览</button></div>}
+      {error && <div><p role="alert">{error}</p><button type="button" onClick={preview} style={filePanelActionStyle}>{tr("重试预览")}</button></div>}
       <ArkmeFileActionToast notice={actionNotice} style={{ position: 'absolute', left: 74, right: 74, bottom: -8 }} />
       <div style={{ position: 'absolute', left: 0, right: 0, bottom: -56, color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <ArkmeFileActionNavButton label="上一个文件" direction="left" disabled={previousDisabled} onClick={() => { if (!previousDisabled) { if (navigation) navigation.previous?.(); else onSelect?.(blocks[index - 1]!) } }} />
+        <ArkmeFileActionNavButton label={tr("上一个文件")} direction="left" disabled={previousDisabled} onClick={() => { if (!previousDisabled) { if (navigation) navigation.previous?.(); else onSelect?.(blocks[index - 1]!) } }} />
         <span aria-hidden style={fileActionWideGapStyle} />
-        <ArkmeFileActionNavButton label="下一个文件" direction="right" disabled={nextDisabled} onClick={() => { if (!nextDisabled) { if (navigation) navigation.next?.(); else onSelect?.(blocks[index + 1]!) } }} />
+        <ArkmeFileActionNavButton label={tr("下一个文件")} direction="right" disabled={nextDisabled} onClick={() => { if (!nextDisabled) { if (navigation) navigation.next?.(); else onSelect?.(blocks[index + 1]!) } }} />
         {!filePanel && <>
           <span aria-hidden style={fileActionWideGapStyle} />
           <ImageCopyAction block={block} sources={{ localOriginalRef: original.localRef ?? block.localFileRef, remoteOriginalRef: block.originalRef, previewUrl: block.mediaRef === '' || block.mediaRef === block.localFileRef ? undefined : `/arkme-self/api/media?ref=${encodeURIComponent(block.mediaRef)}` }} onNotice={showActionNotice} />

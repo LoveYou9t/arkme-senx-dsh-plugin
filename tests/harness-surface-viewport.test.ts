@@ -2,6 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { watchHarnessSurfaceViewport } from '../src/client/harness-surface-viewport.js'
 import { conversationMenuLayer, conversationMenuPosition } from '../src/client/conversation-menu-layer.js'
+import { HARNESS_MENU_POSITION } from '../src/client/harness-session-menu-bridge.js'
 
 let stop: (() => void) | undefined
 afterEach(() => { stop?.(); stop = undefined; document.body.replaceChildren(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.useRealTimers() })
@@ -11,7 +12,11 @@ const rect = (left: number, top: number, width: number, height: number) => ({ le
 function fixture(visible = true) {
   vi.useFakeTimers()
   vi.stubGlobal('innerWidth', 1400)
-  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} })
+  let resize = () => {}
+  vi.stubGlobal('ResizeObserver', class {
+    constructor(callback: () => void) { resize = callback }
+    observe() {} disconnect() {}
+  })
   document.body.innerHTML = '<main style="overflow:hidden"><span id="seat"></span></main>'
   const seat = document.querySelector<HTMLElement>('#seat')!
   vi.spyOn(seat, 'getBoundingClientRect').mockReturnValue(rect(356, 0, 1044, 1000))
@@ -28,8 +33,32 @@ function fixture(visible = true) {
   vi.spyOn(column, 'getBoundingClientRect').mockReturnValue(rect(346, 120, 320, 560))
   vi.spyOn(column, 'getClientRects').mockReturnValue([rect(346, 120, 320, 560)] as unknown as DOMRectList)
   stop = watchHarnessSurfaceViewport(surface, frame, seat)
-  return { seat, surface, frame, native, column }
+  return { seat, surface, frame, native, column, resize }
 }
+
+it('skips stale resize callbacks during iframe navigation and resumes after load', () => {
+  const { frame, native, resize } = fixture()
+  const positioned = vi.fn()
+  native.addEventListener(HARNESS_MENU_POSITION, positioned)
+  resize()
+  expect(positioned).toHaveBeenCalledTimes(1)
+  const detached = vi.spyOn(native, 'defaultView', 'get').mockReturnValue(null)
+  expect(() => resize()).not.toThrow()
+  expect(positioned).toHaveBeenCalledTimes(1)
+  detached.mockRestore()
+  frame.dispatchEvent(new Event('load'))
+  resize()
+  expect(positioned).toHaveBeenCalledTimes(2)
+})
+
+it('ignores a resize callback already queued when the observer was disposed', () => {
+  const { native, resize } = fixture()
+  const positioned = vi.fn()
+  native.addEventListener(HARNESS_MENU_POSITION, positioned)
+  stop?.(); stop = undefined
+  expect(() => resize()).not.toThrow()
+  expect(positioned).not.toHaveBeenCalled()
+})
 
 it('uses the same top-level host and leaves the clipped workspace without moving native nodes', async () => {
   const { surface, frame, native, column } = fixture()

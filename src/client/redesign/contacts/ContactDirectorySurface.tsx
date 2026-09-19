@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from '../../locale.js'
 import { useCallback, useEffect, useReducer, useRef, useState, type ReactNode, type Ref } from 'react'
 import type { ArkmeBotSummary, ArkmeDirectoryItem, ArkmeDirectoryPage, ArkmeDirectorySectionKind } from '../../../types.js'
 import { callArkme } from '../../api.js'
@@ -26,7 +27,7 @@ const SECTION_LABELS: Record<ArkmeDirectorySectionKind, { label: string; empty: 
   bots: { label: 'Bot', empty: '暂无 Bot' },
   'unmarked-speakers': { label: '未标记说话人', empty: '暂无未标记说话人' },
   teams: { label: '团队', empty: '暂无团队' },
-  contacts: { label: '联系人', empty: '暂无联系人' },
+  contacts: { get label() { return tr("联系人") }, empty: '暂无联系人' },
 }
 
 export interface ContactDirectoryLoadOptions {
@@ -105,7 +106,7 @@ export function ContactDirectoryContent({
   onOpenGroup(sourceRef: string): void
   onOpenBot(bot: ArkmeBotSummary): void
 }) {
-  return <nav ref={directoryRef} className="arkme-contact-directory" aria-label="联系人目录">
+  return <nav ref={directoryRef} className="arkme-contact-directory" aria-label={tr("联系人目录")}>
     {CONTACT_DIRECTORY_SECTION_ORDER.map(sectionKind => {
       const section = state.sections[sectionKind]
       const labels = SECTION_LABELS[sectionKind]
@@ -162,7 +163,7 @@ const defaultLoadPage: ContactDirectoryPageLoader = async (section, options, sig
 function errorMessage(error: unknown, section: ArkmeDirectorySectionKind): string {
   const code = (error as { body?: { code?: string } } | undefined)?.body?.code ?? ''
   if (['login-required', 'login-expired', 'auth-http-401', 'auth-http-403'].includes(code) && error instanceof Error) return error.message
-  return `${SECTION_LABELS[section].label}暂时无法加载`
+  return tr("{v0}暂时无法加载", { v0: SECTION_LABELS[section].label })
 }
 
 export function directoryStateForAccount(
@@ -190,6 +191,7 @@ export function ContactDirectorySurface({
   onStateChange,
   loadPage = defaultLoadPage,
 }: ContactDirectorySurfaceProps) {
+  useArkmeLocale()
   const [state, dispatch] = useReducer(
     contactDirectoryReducer,
     { accountKey, initialState },

@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readUiSource } from './helpers/ui-source.js'
 import { describe, expect, it } from 'vitest'
 import {
   arkmeNotificationPermissionLabel,
@@ -53,7 +53,7 @@ describe('Arkme settings policy', () => {
   })
 
   it('keeps notification permission activity separate from logout activity', () => {
-    const source = readFileSync(new URL('../src/client/ArkmeSettingsSurface.tsx', import.meta.url), 'utf8')
+    const source = readUiSource(new URL('../src/client/ArkmeSettingsSurface.tsx', import.meta.url), 'utf8')
 
     expect(source).toContain('const [logoutBusy, setLogoutBusy] = useState(false)')
     expect(source).toContain('const [notificationBusy, setNotificationBusy] = useState(false)')
@@ -63,14 +63,14 @@ describe('Arkme settings policy', () => {
   })
 
   it('shows a read-only plugin version without exposing update controls or polling', () => {
-    const source = readFileSync(new URL('../src/client/ArkmeSettingsSurface.tsx', import.meta.url), 'utf8')
+    const source = readUiSource(new URL('../src/client/ArkmeSettingsSurface.tsx', import.meta.url), 'utf8')
     expect(source).not.toContain('arkmePluginUpdateStore')
     expect(source).toContain('title="ArkME 插件"')
     expect(source).not.toContain("arkmeUpdateUi.open('plugin')")
   })
 
   it('keeps one shell-owned APP update entry without restoring plugin actions', () => {
-    const source = readFileSync(new URL('../src/client/ArkmeSettingsSurface.tsx', import.meta.url), 'utf8')
+    const source = readUiSource(new URL('../src/client/ArkmeSettingsSurface.tsx', import.meta.url), 'utf8')
     expect(source).not.toContain('复制更新命令')
     expect(source).toContain('arkmeAppUpdateStore')
     expect(source).toContain('ArkmeAppUpdateSnapshot')

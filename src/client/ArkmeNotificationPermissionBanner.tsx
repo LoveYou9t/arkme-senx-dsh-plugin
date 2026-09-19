@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import { useEffect, useState, useSyncExternalStore, type CSSProperties } from 'react'
 import type { ArkmeDesktopNotificationPermission } from './desktop-notification-runtime.js'
 import { arkmeDesktopNotifications } from './desktop-notification-runtime.js'
@@ -36,6 +37,7 @@ const styles: Record<string, CSSProperties> = {
 }
 
 export function ArkmeNotificationPermissionBanner() {
+  useArkmeLocale()
   const permission = useSyncExternalStore(
     arkmeDesktopNotifications.subscribePermission,
     arkmeDesktopNotifications.getPermissionSnapshot,
@@ -68,7 +70,7 @@ export function ArkmeNotificationPermissionBanner() {
   return <div style={styles.root} role="status" aria-live="polite">
     <span style={styles.message} title={failure || prompt.message}>{failure || prompt.message}</span>
     <button data-arkme-feedback="neutral" type="button" style={styles.action} disabled={busy} onClick={() => { void activate() }}>
-      {busy ? '处理中…' : prompt.action}
+      {busy ? tr("处理中…") : prompt.action}
     </button>
   </div>
 }

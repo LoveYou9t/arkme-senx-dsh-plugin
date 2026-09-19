@@ -1,3 +1,4 @@
+import { tr } from '../locale.js'
 import type { ArkmeMembership } from '../../types.js'
 import { recordingCoverageContains } from '../../recording-coverage.js'
 import { callArkme, uploadArkmeRecording } from '../api.js'
@@ -181,7 +182,7 @@ export class DirectRecordingStore {
           // Keep an unfinished journal retryable after a disk-write failure.
           if (!session.tail.length) await this.deps.journal.finish(session.record.id)
         }
-      } catch (error) { reason = `录音已停止，保存未完成：${errorText(error)}` }
+      } catch (error) { reason = tr("录音已停止，保存未完成：{v0}", { v0: errorText(error) }) }
       finally {
         session.release(); if (this.session === session) this.session = undefined
       }
@@ -212,7 +213,7 @@ export class DirectRecordingStore {
       await this.deps.journal.remove(id); this.emergency.delete(id)
       if (this.valid(generation)) this.publish({ submitted: [...(this.state.submitted ?? []).filter(item => item.id !== id), record], volatile: this.emergency.size > 0, message: '录音已提交，可在录音导入任务中查看转写进度', acceptedRevision: this.state.acceptedRevision + 1 })
     } catch (error) {
-      if (this.valid(generation)) this.publish({ error: `${errorText(error)}；录音仍保留在本机，可重试或下载`, message: '' })
+      if (this.valid(generation)) this.publish({ error: tr("{v0}；录音仍保留在本机，可重试或下载", { v0: errorText(error) }), message: '' })
     } finally {
       release?.()
       if (this.valid(generation)) { this.publish({ phase: 'idle' }); await this.refresh(generation) }

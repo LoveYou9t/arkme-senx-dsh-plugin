@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale, arkmeIntlLocale } from './locale.js'
 import { directorySearchLayout } from './directory-search-layout.js'
 import { ArkmeActionMenu } from './ArkmeDshMenu.js'
 import { ArkmePinnedCorner } from './ArkmePinnedCorner.js'
@@ -418,8 +419,8 @@ export function ArkmeRecordingsRow({ selected, onClick }: { selected: boolean; o
   >
     <span style={styles.avatar} aria-hidden><ArkmeMark size={38} /></span>
     <span data-arkme-conversation-content style={styles.chatContent}>
-      <span style={styles.chatTop}><span style={styles.chatName}>全天候录音</span></span>
-      <span style={styles.chatBottom}><span style={styles.preview}>转写、日总结与时间轴</span></span>
+      <span style={styles.chatTop}><span style={styles.chatName}>{tr("全天候录音")}</span></span>
+      <span style={styles.chatBottom}><span style={styles.preview}>{tr("转写、日总结与时间轴")}</span></span>
     </span>
   </button>
 }
@@ -434,8 +435,8 @@ export function ArkmeCallsRow({ selected, onClick }: { selected: boolean; onClic
   >
     <span style={styles.avatar} aria-hidden><ArkmeMark size={38} /></span>
     <span data-arkme-conversation-content style={styles.chatContent}>
-      <span style={styles.chatTop}><span style={styles.chatName}>通话</span></span>
-      <span style={styles.chatBottom}><span style={styles.preview}>通话记录、录音与 AI 摘要</span></span>
+      <span style={styles.chatTop}><span style={styles.chatName}>{tr("通话")}</span></span>
+      <span style={styles.chatBottom}><span style={styles.preview}>{tr("通话记录、录音与 AI 摘要")}</span></span>
     </span>
   </button>
 }
@@ -461,8 +462,8 @@ export function ArkmeCalendarRow({ selected, onClick }: { selected: boolean; onC
   >
     <span style={styles.avatar} aria-hidden><CalendarAvatar /></span>
     <span data-arkme-conversation-content style={styles.chatContent}>
-      <span style={styles.chatTop}><span style={styles.chatName}>日历</span></span>
-      <span style={styles.chatBottom}><span style={styles.preview}>按日期查看快记</span></span>
+      <span style={styles.chatTop}><span style={styles.chatName}>{tr("日历")}</span></span>
+      <span style={styles.chatBottom}><span style={styles.preview}>{tr("按日期查看快记")}</span></span>
     </span>
   </button>
 }
@@ -477,8 +478,8 @@ export function ArkmeSearchRow({ selected, onClick }: { selected: boolean; onCli
   >
     <span style={styles.avatar} aria-hidden><img src="/arkme-self/api/call/image_search.svg" alt="" width={25} height={24} /></span>
     <span data-arkme-conversation-content style={styles.chatContent}>
-      <span style={styles.chatTop}><span style={styles.chatName}>搜索</span></span>
-      <span style={styles.chatBottom}><span style={styles.preview}>快记、主题、录音与 AI 视频</span></span>
+      <span style={styles.chatTop}><span style={styles.chatName}>{tr("搜索")}</span></span>
+      <span style={styles.chatBottom}><span style={styles.preview}>{tr("快记、主题、录音与 AI 视频")}</span></span>
     </span>
   </button>
 }
@@ -490,8 +491,8 @@ export function ArkmeContactAddRow({ selected, onClick }: { selected: boolean; o
   >
     <span style={styles.avatar} aria-hidden><span style={styles.contactAddIcon} /></span>
     <span data-arkme-conversation-content style={styles.chatContent}>
-      <span style={styles.chatTop}><span style={styles.chatName}>添加联系人</span></span>
-      <span style={styles.chatBottom}><span style={styles.preview}>通过手机号或即我号搜索</span></span>
+      <span style={styles.chatTop}><span style={styles.chatName}>{tr("添加联系人")}</span></span>
+      <span style={styles.chatBottom}><span style={styles.preview}>{tr("通过手机号或即我号搜索")}</span></span>
     </span>
   </button>
 }
@@ -539,6 +540,7 @@ export function ArkmeArkoRow({
 }
 
 export function DeepSeekHarnessRow({ selected, onClick, accountScope, hoverEnabled = true }: { selected: boolean; onClick(): void; accountScope?: string | undefined; hoverEnabled?: boolean }) {
+  useArkmeLocale()
   const rowRef = useRef<HTMLButtonElement>(null)
   const activateRef = useRef(onClick)
   activateRef.current = onClick
@@ -605,15 +607,15 @@ export function ArkmeOfficialAuthorRow({
       ? <ArkmeMark size={38} />
       : <ArkmeUserAvatar
           size={38}
-          label={`${profile.displayName}的头像`}
+          label={tr("{v0}的头像", { v0: profile.displayName })}
           {...(profile.avatarRef === undefined ? {} : { avatarRef: profile.avatarRef })}
         />}
-    title="联系作者"
-    titleBadge={<ArkmeTopicTagBadge label="官方" />}
+    title={tr("联系作者")}
+    titleBadge={<ArkmeTopicTagBadge label={tr("官方")} />}
     preview={busy ? '正在打开私聊…' : OFFICIAL_AUTHOR_PREVIEW}
     selected={false}
     disabled={busy}
-    ariaLabel="联系作者"
+    ariaLabel={tr("联系作者")}
     homeTourTarget="official-author"
     onClick={onClick}
   />
@@ -626,11 +628,11 @@ function timeLabel(value: number): string {
   const now = new Date()
   const start = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   const day = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime()
-  const time = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(date)
+  const time = new Intl.DateTimeFormat(arkmeIntlLocale(), { hour: '2-digit', minute: '2-digit', hour12: false }).format(date)
   if (day === start) return time
-  if (day === start - 86_400_000) return `昨天 ${time}`
-  if (day > start - 7 * 86_400_000) return new Intl.DateTimeFormat('zh-CN', { weekday: 'short' }).format(date)
-  return new Intl.DateTimeFormat('zh-CN', { month: '2-digit', day: '2-digit' }).format(date)
+  if (day === start - 86_400_000) return tr("昨天 {v0}", { v0: time })
+  if (day > start - 7 * 86_400_000) return new Intl.DateTimeFormat(arkmeIntlLocale(), { weekday: 'short' }).format(date)
+  return new Intl.DateTimeFormat(arkmeIntlLocale(), { month: '2-digit', day: '2-digit' }).format(date)
 }
 
 export function arkmeRootChatPreview(source: ArkmeSourceItem): string {
@@ -709,7 +711,7 @@ export function ArkmeTopicTreeRow({
     {row.hasChildren ? <button data-arkme-feedback="neutral"
       type="button"
       style={{ ...styles.topicLead, ...styles.topicToggle, marginLeft: 2 + row.depth * 18 }}
-      aria-label={`${row.expanded ? '收起' : '展开'}${source.displayName}`}
+      aria-label={`${row.expanded ? tr("收起") : tr("展开")}${source.displayName}`}
       title={row.expanded ? '收起子主题' : '展开子主题'}
       onClick={onToggle}
     ><svg aria-hidden viewBox="0 0 16 16" style={{ ...styles.topicChevron, transform: row.expanded ? 'rotate(90deg)' : 'rotate(0deg)' }}>
@@ -729,7 +731,7 @@ export function ArkmeTopicTreeRow({
     >
       <button data-arkme-feedback="neutral"
         type="button" style={styles.topicCreateIcon}
-        aria-label={`在${source.displayName}下创建子主题`} title="创建子主题"
+        aria-label={tr("在{v0}下创建子主题", { v0: source.displayName })} title={tr("创建子主题")}
         onClick={event => { event.stopPropagation(); onCreateChild() }}
       ><svg aria-hidden viewBox="0 0 16 16" style={styles.topicCreatePlus}>
         <path d="M8 2.5v11M2.5 8h11" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" />
@@ -841,20 +843,20 @@ export function toggleTopicCollapsedState(
 
 export function ArkmeTopicCreateFooter({ onCreate }: { onCreate: () => void }) {
   return <div style={styles.topicCreateFooter}>
-    <button data-arkme-feedback="neutral" type="button" style={styles.topicCreateButton} onClick={onCreate}>新建主题</button>
+    <button data-arkme-feedback="neutral" type="button" style={styles.topicCreateButton} onClick={onCreate}>{tr("新建主题")}</button>
   </div>
 }
 
 const arkmeSourceSortOptions: ReadonlyArray<{ value: ArkmeSourceSort, label: string }> = [
-  { value: 'latest', label: '最新' },
-  { value: 'most', label: '最多' },
-  { value: 'default', label: '默认' },
+  { value: 'latest', get label() { return tr("最新") } },
+  { value: 'most', get label() { return tr("最多") } },
+  { value: 'default', get label() { return tr("默认") } },
 ]
 
 export function ArkmeSourceSortMenu({
   value, onSelect, open = true, onClose = () => {}, anchor,
 }: { value: ArkmeSourceSort; onSelect: (value: ArkmeSourceSort) => void; open?: boolean; onClose?: () => void; anchor?: ReactNode }) {
-  return <ArkmeActionMenu label="排序方式" open={open} anchor={anchor} align="end"
+  return <ArkmeActionMenu label={tr("排序方式")} open={open} anchor={anchor} align="end"
     onClose={onClose} selectedIds={[value]} actions={arkmeSourceSortOptions.map(option => ({
       id: option.value, label: option.label, onSelect: () => onSelect(option.value),
     }))} />
@@ -863,13 +865,14 @@ export function ArkmeSourceSortMenu({
 export function ArkmeSourceSortControl({
   value, onChange,
 }: { value: ArkmeSourceSort, onChange: (value: ArkmeSourceSort) => void }) {
+  useArkmeLocale()
   const [open, setOpen] = useState(false)
   const label = arkmeSourceSortOptions.find(option => option.value === value)?.label ?? '默认'
   return <div style={styles.sortControl}>
     <ArkmeSourceSortMenu value={value} open={open} onClose={() => setOpen(false)}
       onSelect={next => { onChange(next); setOpen(false) }}
       anchor={<button data-arkme-feedback="neutral"
-        type="button" style={styles.sortTrigger} aria-label={`发给自己排序：${label}`}
+        type="button" style={styles.sortTrigger} aria-label={tr("发给自己排序：{v0}", { v0: label })}
         aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(current => !current)}>
         <span>{label}</span>
         <svg aria-hidden viewBox="0 0 10 10" style={styles.sortArrow}>
@@ -883,6 +886,7 @@ export function ArkmeNavigation({
   active = true, wide = true, compactDirectory = false, currentSessionId, embeddedProductShell = false, onClose, onActivateSurface, showHarnessEntry = false,
   lockedDirectory = false, sendToSelfSource, directoryLead, onCreateTask, searchDshMessages, onOpenDshSession, renderSlot,
 }: ArkmeNavigationProps) {
+  useArkmeLocale()
   const activeRef = useRef(active)
   activeRef.current = active
   const ui = useSyncExternalStore(arkmeUi.subscribe, arkmeUi.getViewSnapshot, arkmeUi.getViewSnapshot)
@@ -1923,7 +1927,7 @@ export function ArkmeNavigation({
     }
     return renderSlot('arkme.topic.actions', {
       source: topic, isCurrent,
-      renderDefault: () => !cardMode && hoveredSourceRef === topic.sourceRef ? <button data-arkme-feedback="neutral" type="button" style={styles.topicCreateIcon} aria-label={`在${topic.displayName}下创建子主题`} onClick={() => { if (isCurrent()) openTopicCreate(topic, arkmeTopicPathNames(topic, sources).length) }}>+</button> : null,
+      renderDefault: () => !cardMode && hoveredSourceRef === topic.sourceRef ? <button data-arkme-feedback="neutral" type="button" style={styles.topicCreateIcon} aria-label={tr("在{v0}下创建子主题", { v0: topic.displayName })} onClick={() => { if (isCurrent()) openTopicCreate(topic, arkmeTopicPathNames(topic, sources).length) }}>+</button> : null,
       onCreateChild: () => { if (isCurrent()) openTopicCreate(topic, arkmeTopicPathNames(topic, sources).length) },
       onChanged: renamed => {
         if (!isCurrent()) return
@@ -1937,7 +1941,7 @@ export function ArkmeNavigation({
   const renderSelfEntry = (onClick?: () => void) => (<button
           ref={selfEntryRef}
           type="button" role="treeitem"
-          aria-label="发给自己"
+          aria-label={tr("发给自己")}
           data-arkme-home-tour-target="send-to-self"
           aria-haspopup="tree"
           aria-expanded="false"
@@ -1953,8 +1957,8 @@ export function ArkmeNavigation({
           <SelfAvatar />
           <span data-arkme-conversation-content style={styles.chatContent}>
             <span style={styles.chatTop}>
-              <span style={styles.entryName}>发给自己</span>
-              <ArkmeTopicTagBadge label="私密" selected={activeDirectoryEntryId === undefined && ui.mode === 'source' && isArkmeSelfWorkspaceSource(ui.selectedSource)} />
+              <span style={styles.entryName}>{tr("发给自己")}</span>
+              <ArkmeTopicTagBadge label={tr("私密")} selected={activeDirectoryEntryId === undefined && ui.mode === 'source' && isArkmeSelfWorkspaceSource(ui.selectedSource)} />
               <span aria-hidden style={{ flex: 1 }} />
               {sendToSelfPresentation.time !== '' && <span style={styles.chatTime}>{sendToSelfPresentation.time}</span>}
             </span>
@@ -1971,29 +1975,29 @@ export function ArkmeNavigation({
 
   return <section
     style={styles.shell}
-    aria-label="Arkme 会话列表"
+    aria-label={tr("Arkme 会话列表")}
     data-arkme-layout={embeddedProductShell ? 'product-directory' : undefined}
     data-arkme-directory-compact={compactDirectory && directory === 'root' ? 'true' : undefined}
   >
     {directory === 'send_to_self' && <header data-arkme-window-drag-region="conversation" style={styles.header}>
       <button data-arkme-feedback="neutral"
-        type="button" style={styles.headerButton} aria-label="返回 Arkme 会话列表" title="返回"
+        type="button" style={styles.headerButton} aria-label={tr("返回 Arkme 会话列表")} title={tr("返回")}
         onClick={() => { changeDirectory('root') }}
       >‹</button>
-      <h2 style={styles.sendToSelfHeaderTitle}>发给自己</h2>
+      <h2 style={styles.sendToSelfHeaderTitle}>{tr("发给自己")}</h2>
       <ArkmeSourceSortControl value={sourceSort} onChange={value => {
         setSourceSort(value)
         setHoveredSourceRef(undefined)
       }} />
-      {onClose !== undefined && <button data-arkme-feedback="neutral" type="button" style={styles.headerButton} aria-label="关闭 Arkme" title="关闭 Arkme" onClick={onClose}>×</button>}
+      {onClose !== undefined && <button data-arkme-feedback="neutral" type="button" style={styles.headerButton} aria-label={tr("关闭 Arkme")} title={tr("关闭 Arkme")} onClick={onClose}>×</button>}
     </header>}
     {directory === 'root' && embeddedProductShell && <div className="arkme-directory-search-toolbar" data-arkme-window-drag-region="conversation" data-arkme-window-drag-directory="" style={styles.conversationToolbar}>
       <button data-arkme-feedback="neutral" type="button" data-arkme-directory-search style={{ ...directorySearchLayout.field, ...styles.embeddedSearchField }}
-        aria-label="搜索对话或消息" title="搜索对话或消息" aria-haspopup="dialog"
+        aria-label={tr("搜索对话或消息")} title={tr("搜索对话或消息")} aria-haspopup="dialog"
         onClick={() => { if (lockedDirectory) showLogin(); else setGlobalSearchOpen(true) }}
       >
         <MagnifyingGlass size={16} style={directorySearchLayout.icon} aria-hidden />
-        <span data-arkme-directory-search-label style={styles.searchLabel}>搜索对话或消息</span>
+        <span data-arkme-directory-search-label style={styles.searchLabel}>{tr("搜索对话或消息")}</span>
       </button>
       {active && authenticated && <ArkmeQuickAddButton
         onNewDshSession={showHarnessEntry ? () => startEmbeddedHarnessSession(() => {
@@ -2007,11 +2011,11 @@ export function ArkmeNavigation({
         onSourceCreated={createdQuickAddSource}
         onBotCreated={createdQuickAddBot}
       />}
-      {lockedDirectory && <button data-arkme-feedback="neutral" type="button" style={styles.createTaskButton} aria-label="添加联系人、群聊或 Bot" onClick={showLogin}><Plus size={19} /></button>}
-      {onCreateTask !== undefined && <button data-arkme-feedback="neutral" type="button" style={styles.createTaskButton} aria-label="新任务" onClick={onCreateTask}><Plus size={19} /></button>}
+      {lockedDirectory && <button data-arkme-feedback="neutral" type="button" style={styles.createTaskButton} aria-label={tr("添加联系人、群聊或 Bot")} onClick={showLogin}><Plus size={19} /></button>}
+      {onCreateTask !== undefined && <button data-arkme-feedback="neutral" type="button" style={styles.createTaskButton} aria-label={tr("新任务")} onClick={onCreateTask}><Plus size={19} /></button>}
     </div>}
     {lockedDirectory ? <>
-      <ArkmeOverlayScrollArea style={{ ...styles.list, ...styles.conversationList }} role="tree" aria-label="Arkme 会话">
+      <ArkmeOverlayScrollArea style={{ ...styles.list, ...styles.conversationList }} role="tree" aria-label={tr("Arkme 会话")}>
         {showHarnessEntry && <DeepSeekHarnessRow
           selected
           onClick={() => {
@@ -2023,7 +2027,7 @@ export function ArkmeNavigation({
         <ArkmeDSHBetaCommunityEntryContent avatarUrls={[]} joining={false} onActivate={showLogin} />
         <ArkmeOfficialAuthorRow onClick={showLogin} />
       </ArkmeOverlayScrollArea>
-      <button data-arkme-feedback="neutral" type="button" style={styles.loginButton} onClick={showLogin}>登录解锁更多功能</button>
+      <button data-arkme-feedback="neutral" type="button" style={styles.loginButton} onClick={showLogin}>{tr("登录解锁更多功能")}</button>
     </> : !authenticated && auth !== undefined ? <button data-arkme-feedback="neutral" type="button" style={styles.loginButton} onClick={showLogin}>
       {bindingRequired ? '完成登录' : '登录 Arkme'}
     </button> : <>
@@ -2049,7 +2053,7 @@ export function ArkmeNavigation({
         ...(directory === 'send_to_self' && cardMode ? styles.topicCardList : {}),
       }}
       role={directory === 'send_to_self' && cardMode ? 'list' : 'tree'}
-      aria-label={directory === 'send_to_self' ? '发给自己分类' : 'Arkme 会话'}
+      aria-label={directory === 'send_to_self' ? '发给自己分类' : tr("Arkme 会话")}
     >
       {directory === 'root' && <>
         {authenticated && <ArkmeNotificationPermissionBanner />}
@@ -2088,8 +2092,8 @@ export function ArkmeNavigation({
           renderRow: renderArkmeDirectoryRow,
         })}
         {!hasDirectoryData && (rootDirectoryState === 'error' || chatDirectory.projection?.phase === 'failed') && <>
-          <div style={{ ...styles.status, color: '#c2413b' }}>会话加载失败，请重试</div>
-          <button data-arkme-feedback="neutral" type="button" style={styles.rootDirectoryRetry} onClick={() => { void loadDirectory('root', undefined, true) }}>重新加载</button>
+          <div style={{ ...styles.status, color: '#c2413b' }}>{tr("会话加载失败，请重试")}</div>
+          <button data-arkme-feedback="neutral" type="button" style={styles.rootDirectoryRetry} onClick={() => { void loadDirectory('root', undefined, true) }}>{tr("重新加载")}</button>
         </>}
         <ArkmeConversationRemovalStyles />
         <ArkmeDirectoryWindow revealKey={unreadJumpTarget?.key} activeKey={ui.mode === "source" && ui.selectedSource !== undefined ? arkmeSourceIdentityKey(ui.selectedSource) : ui.mode === "bot" && ui.selectedBot !== undefined ? conversationBotVisibilityKey(ui.selectedBot) : undefined}>{removalFeedback.rows.map(row => {
@@ -2110,8 +2114,8 @@ export function ArkmeNavigation({
                 else rootRowElementsRef.current.set(`bot:${bot.botRef}`, node)
               }}
               aria-label={unreadPlacement === 'avatar'
-                ? `${bot.name}，${String(badgeUnreadCount)} 条未读`
-                : unreadPlacement === 'dot' ? `${bot.name}，有未读消息，已免打扰` : bot.name}
+                ? tr("{v0}，{v1} 条未读", { v0: bot.name, v1: String(badgeUnreadCount) })
+                : unreadPlacement === 'dot' ? tr("{v0}，有未读消息，已免打扰", { v0: bot.name }) : bot.name}
               data-arkme-removal-phase={removalPhase}
               style={{ ...styles.chatRow, ...(selected ? styles.chatRowActive : {}), ...(interactionsDisabled ? styles.chatRowRemoving : {}), ...conversationRemovalRowStyle(removalPhase) }}
               disabled={interactionsDisabled}
@@ -2155,8 +2159,8 @@ export function ArkmeNavigation({
           return <button
             key={arkmeSourceIdentityKey(source)} data-arkme-directory-row="source" type="button" role="treeitem" aria-selected={selected}
             aria-label={unreadPlacement === 'avatar'
-              ? `${source.displayName}，${String(badgeUnreadCount)} 条未读`
-              : unreadPlacement === 'dot' ? `${source.displayName}，有未读消息，已免打扰` : source.displayName}
+              ? tr("{v0}，{v1} 条未读", { v0: source.displayName, v1: String(badgeUnreadCount) })
+              : unreadPlacement === 'dot' ? tr("{v0}，有未读消息，已免打扰", { v0: source.displayName }) : source.displayName}
             ref={node => {
               if (node === null) rootRowElementsRef.current.delete(source.sourceRef)
               else rootRowElementsRef.current.set(source.sourceRef, node)
@@ -2183,7 +2187,7 @@ export function ArkmeNavigation({
               <span style={styles.chatTop}>
                 <span style={isArkmeOfficialAuthor(source) ? styles.entryName : styles.chatName}>{source.displayName}</span>
                 {isArkmeOfficialAuthor(source) && <>
-                  <ArkmeTopicTagBadge label="官方" selected={selected} />
+                  <ArkmeTopicTagBadge label={tr("官方")} selected={selected} />
                   <span aria-hidden style={{ flex: 1 }} />
                 </>}
                 <span style={styles.chatTime}>{timeLabel(source.activeAtMillis)}</span>
@@ -2273,7 +2277,7 @@ export function ArkmeNavigation({
       }}
     />}
     {active && directoryContextMenu !== undefined && <ArkmeActionMenu
-      label={`${directoryContextMenuName ?? '会话'}的会话操作`}
+      label={tr("{v0}的会话操作", { v0: directoryContextMenuName ?? '会话' })}
       point={{ x: directoryContextMenu.x, y: directoryContextMenu.y }}
       onClose={() => setDirectoryContextMenu(undefined)}
       actions={[

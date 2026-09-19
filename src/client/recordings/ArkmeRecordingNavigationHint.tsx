@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from '../locale.js'
 import { useLayoutEffect, useState, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import { arkmeTheme as theme } from '../arkme-theme.js'
@@ -11,6 +12,7 @@ export function ArkmeRecordingNavigationHint({ anchor, elapsedMillis, startedAt,
   startedAt: number
   id: string
 }) {
+  useArkmeLocale()
   const breathStyle = useRecordingBreathStyle(true, startedAt)
   const [position, setPosition] = useState<{ left: number; top: number; width: number }>()
   useLayoutEffect(() => {
@@ -42,9 +44,9 @@ export function ArkmeRecordingNavigationHint({ anchor, elapsedMillis, startedAt,
       boxShadow: theme.shadow, pointerEvents: 'none', fontSize: 13, lineHeight: '20px' }}>
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <span data-arkme-recording-breath="dot" aria-hidden style={{ width: 7, height: 7, borderRadius: '50%', background: theme.danger, flex: 'none' }} />
-      <span>本机正在录音</span>
+      <span>{tr("本机正在录音")}</span>
       <span style={{ marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' }}>{recordingClock(elapsedMillis)}</span>
     </div>
-    <div style={{ marginTop: 4, fontSize: 12, color: theme.secondary }}>点击查看录音 · 本机保存中</div>
+    <div style={{ marginTop: 4, fontSize: 12, color: theme.secondary }}>{tr("点击查看录音 · 本机保存中")}</div>
   </div>, body)
 }

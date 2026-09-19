@@ -1,3 +1,4 @@
+import { tr } from './locale.js'
 import { useEffect, useRef, useState, type RefObject } from 'react'
 
 export const NOTE_DETAIL_WIDTH_KEY = 'arkme:note-detail-width:v1'
@@ -64,7 +65,7 @@ export function useResizableNoteDetail(panel: RefObject<HTMLElement>, preference
     style: { width, maxWidth: '100%' },
     handle: <div role="separator" aria-label={label} aria-orientation="vertical"
       aria-valuemin={Math.round(bounds.min)} aria-valuemax={Math.round(bounds.max)} aria-valuenow={Math.round(width)}
-      tabIndex={0} title="左右拖动调整详情宽度，双击恢复默认宽度"
+      tabIndex={0} title={tr("左右拖动调整详情宽度，双击恢复默认宽度")}
       style={{ position: 'absolute', left: -5, top: 0, bottom: 0, width: 10, zIndex: 20, cursor: 'ew-resize', touchAction: 'none' }}
       onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}
       onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}

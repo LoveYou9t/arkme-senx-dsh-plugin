@@ -77,6 +77,8 @@ describe('CallHistoryService', () => {
     const owner = service(fetchImpl)
     const record = await owner.timelineCallRecord({ crd: { ri: 'identity-room', cr: 42, mt: 'Video', rs: 'NormalEnd' } }, 42)
     const detail = await owner.callDetail(record!.callRef!)
+    expect(detail.stableId).toBe(record!.stableId)
+    expect(detail.stableId).not.toContain('identity-room')
     expect(detail.summaryText).toBe(remarkFailure
       ? '我与Jotmoer、Jotmoer、Jotmoer方说话人A和已标记姓名聊天。'
       : '我与英梦华、安宝、Jotmoer方说话人A和已标记姓名聊天。')

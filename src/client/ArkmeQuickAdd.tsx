@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import { IconNewChatOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { PhoneCall } from '@phosphor-icons/react/dist/icons/PhoneCall'
 import { ArkmeActionMenu } from './ArkmeDshMenu.js'
@@ -85,7 +86,7 @@ export function ArkmeQuickAddMenu({ onContactAdd, onCreateGroup, onStartCall, on
 }) {
   const icon = (base64: string) => <span aria-hidden style={maskIcon(base64, { width: 16, height: 16 })} />
   return <span data-arkme-notification-blocking-overlay={open ? 'true' : undefined}>
-    <ArkmeActionMenu label="添加" open={open} anchor={anchor} align="end" onClose={onClose}
+    <ArkmeActionMenu label={tr("添加")} open={open} anchor={anchor} align="end" onClose={onClose}
       {...(getAnchorRect === undefined ? {} : { getAnchorRect })}
       actions={[
         onNewDshSession !== undefined && { id: 'dsh', label: '新建 DSH 会话', icon: <IconNewChatOutline16 />, onSelect: onNewDshSession },
@@ -114,6 +115,7 @@ export function ArkmeQuickAddButton({
   notificationActivationRevision?: number
   onBlockingOverlayChange?(open: boolean): void
 }) {
+  useArkmeLocale()
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuError, setMenuError] = useState('')
   const [dialogKind, setDialogKind] = useState<QuickAddDialogKind>()
@@ -163,7 +165,7 @@ export function ArkmeQuickAddButton({
   const menu = <ArkmeQuickAddMenu
       open={menuOpen} onClose={() => setMenuOpen(false)}
       anchor={<button data-arkme-feedback="neutral"
-        ref={triggerRef} type="button" aria-label={onNewDshSession ? '新建 DSH 会话、添加联系人、群聊、发起通话或添加 Bot' : '添加联系人、群聊、发起通话或添加 Bot'} title="添加"
+        ref={triggerRef} type="button" aria-label={onNewDshSession ? '新建 DSH 会话、添加联系人、群聊、发起通话或添加 Bot' : '添加联系人、群聊、发起通话或添加 Bot'} title={tr("添加")}
         aria-haspopup="menu" aria-expanded={menuOpen} style={style.trigger}
         onClick={() => { setMenuError(''); setMenuOpen(open => !open) }}
       >＋</button>}
@@ -215,6 +217,7 @@ function ArkmeGroupCreateDialog({ onClose, onSourceCreated, onBusyChange }: {
   onSourceCreated(source: ArkmeSourceItem): void | Promise<void>
   onBusyChange?(busy: boolean): void
 }) {
+  useArkmeLocale()
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -257,11 +260,10 @@ function ArkmeGroupCreateDialog({ onClose, onSourceCreated, onBusyChange }: {
   >
     <div role="dialog" aria-modal="true" aria-labelledby="arkme-quick-add-title" style={style.dialog}>
       <div style={style.dialogHeader}>
-        <h2 id="arkme-quick-add-title" style={style.heading}>创建群聊</h2>
-        <button data-arkme-feedback="neutral" type="button" style={style.close} aria-label="关闭" disabled={busy} onClick={onClose}>×</button>
+        <h2 id="arkme-quick-add-title" style={style.heading}>{tr("创建群聊")}</h2>
+        <button data-arkme-feedback="neutral" type="button" style={style.close} aria-label={tr("关闭")} disabled={busy} onClick={onClose}>×</button>
       </div>
-      <label style={style.label}>群聊名称
-        <input
+      <label style={style.label}>{tr("群聊名称")}<input
           ref={firstInput} style={style.input} value={name} disabled={busy}
           maxLength={80}
           onChange={event => { setName(event.target.value) }}
@@ -270,11 +272,11 @@ function ArkmeGroupCreateDialog({ onClose, onSourceCreated, onBusyChange }: {
       </label>
       {error !== '' && <div role="alert" style={style.error}>{error}</div>}
       <div style={style.actions}>
-        <button data-arkme-feedback="neutral" type="button" style={style.button} disabled={busy} onClick={onClose}>取消</button>
+        <button data-arkme-feedback="neutral" type="button" style={style.button} disabled={busy} onClick={onClose}>{tr("取消")}</button>
         <button data-arkme-feedback="primary"
           type="button" style={{ ...style.button, ...style.primary }} disabled={busy || name.trim() === ''}
           onClick={() => { void submit() }}
-        >{busy ? '处理中…' : '确认'}</button>
+        >{busy ? tr("处理中…") : tr("确认")}</button>
       </div>
     </div>
   </div>

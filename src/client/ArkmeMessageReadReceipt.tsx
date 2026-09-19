@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import {
   useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore,
   type CSSProperties, type ReactNode,
@@ -140,12 +141,12 @@ function readAtLabel(milliseconds: number): string {
   const month = String(value.getMonth() + 1).padStart(2, '0')
   const day = String(value.getDate()).padStart(2, '0')
   if (value > today) return `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`
-  if (value > yesterday) return '昨天'
-  if (value > dayBeforeYesterday) return '前天'
-  if (value > startOfWeek) return '本周'
-  if (value > startOfLastWeek) return '上周'
-  if (value > startOfMonth) return '本月'
-  if (value > startOfLastMonth) return '上月'
+  if (value > yesterday) return tr("昨天")
+  if (value > dayBeforeYesterday) return tr("前天")
+  if (value > startOfWeek) return tr("本周")
+  if (value > startOfLastWeek) return tr("上周")
+  if (value > startOfMonth) return tr("本月")
+  if (value > startOfLastMonth) return tr("上月")
   if (value > startOfYear) return `${month}/${day}`
   if (value > startOfLastYear) return `去年/${month}/${day}`
   if (value > startOfYearBeforeLast) return `前年/${month}/${day}`
@@ -153,7 +154,7 @@ function readAtLabel(milliseconds: number): string {
 }
 
 function summaryLabel(summary: ArkmeMessageReadReceiptSummary): string {
-  return `已读 ${summary.readCount} / 未读 ${summary.unreadCount}`
+  return tr("已读 {v0} / 未读 {v1}", { v0: summary.readCount, v1: summary.unreadCount })
 }
 
 function ReceiptCircle(props: { checked?: boolean; count?: number }) {
@@ -165,7 +166,7 @@ function ReceiptCircle(props: { checked?: boolean; count?: number }) {
 }
 
 function errorText(error: unknown): string {
-  return error instanceof Error && error.message.trim() !== '' ? error.message : '加载失败'
+  return error instanceof Error && error.message.trim() !== '' ? error.message : tr("加载失败")
 }
 
 interface DetailPanelLayout {
@@ -241,6 +242,7 @@ type MemberReceiptPanelProps = {
 }
 
 function ArkmeMessageReadReceiptDetailPanel(props: MemberReceiptPanelProps) {
+  useArkmeLocale()
   const auth = useSyncExternalStore(arkmeAuthStore.subscribe, arkmeAuthStore.getSnapshot).auth
   const account = auth?.status === 'authenticated' && auth.userId !== undefined ? `${auth.environment}:${auth.userId}` : undefined
   const generation = useSyncExternalStore(arkmeMessageReadReceipts.subscribe, arkmeMessageReadReceipts.getAccountGeneration)
@@ -250,6 +252,7 @@ function ArkmeMessageReadReceiptDetailPanel(props: MemberReceiptPanelProps) {
 }
 
 function MemberReceiptPanelContent(props: MemberReceiptPanelProps & { account: string | undefined }) {
+  useArkmeLocale()
   const panelRef = useRef<HTMLDivElement>(null)
   const [layout, setLayout] = useState(() => detailPanelLayout(props.anchor))
   const members = useConversationMembers(props.account, props.source)
@@ -321,19 +324,19 @@ function MemberReceiptPanelContent(props: MemberReceiptPanelProps & { account: s
   return createPortal(<div
     ref={panelRef}
     role="dialog"
-    aria-label="群消息已读详情"
+    aria-label={tr("群消息已读详情")}
     data-arkme-read-receipt-panel-placement={layout.arrowPlacement === 'bottom' ? 'above' : 'below'}
     style={{ ...styles.panel, left: layout.left, top: layout.top }}
   >
     <PanelArrow arrowPlacement={layout.arrowPlacement} arrowOffset={layout.arrowOffset} />
     <div style={styles.panelSurface}>
       <div style={styles.panelBody}>
-        {state.status === 'loading' && state.detail === undefined && <div role="status" style={styles.panelState}>加载中...</div>}
+        {state.status === 'loading' && state.detail === undefined && <div role="status" style={styles.panelState}>{tr("加载中...")}</div>}
         {state.status === 'error' && <button
           type="button" role="alert" title={state.message} style={{ ...styles.panelState, ...styles.panelRetry }}
           onClick={() => { load(true) }}
-        >加载失败</button>}
-        {state.detail !== undefined && state.detail.items.length === 0 && <div style={styles.panelState}>暂无更多人员信息</div>}
+        >{tr("加载失败")}</button>}
+        {state.detail !== undefined && state.detail.items.length === 0 && <div style={styles.panelState}>{tr("暂无更多人员信息")}</div>}
         {state.detail?.items.map(receipt => {
           const knownMember = membersByRef.get(receipt.memberRef)
           const member = {
@@ -347,13 +350,13 @@ function MemberReceiptPanelContent(props: MemberReceiptPanelProps & { account: s
               <ArkmeUserAvatar lazy
                 {...(member.avatarRef === undefined ? {} : { avatarRef: member.avatarRef })}
                 size={20}
-                label={`${member.displayName} 的头像`}
+                label={tr("{v0} 的头像", { v0: member.displayName })}
               />
               <span style={styles.memberName}>{member.displayName}</span>
             </span>
             {isRead
-              ? <span style={styles.memberStatus}>{member.readAtMillis !== undefined && member.readAtMillis > 0 ? readAtLabel(member.readAtMillis) : '已读'}</span>
-              : <span style={styles.memberUnreadDot} aria-label="未读" />}
+              ? <span style={styles.memberStatus}>{member.readAtMillis !== undefined && member.readAtMillis > 0 ? readAtLabel(member.readAtMillis) : tr("已读")}</span>
+              : <span style={styles.memberUnreadDot} aria-label={tr("未读")} />}
           </div>
         })}
       </div>
@@ -365,6 +368,7 @@ export function ArkmeMessageReadReceipt(props: {
   source: ArkmeSourceItem
   item: ArkmeTimelineItem
 }) {
+  useArkmeLocale()
   const hostRef = useRef<HTMLSpanElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -437,7 +441,7 @@ export function ArkmeMessageReadReceipt(props: {
         ref={buttonRef}
         type="button"
         style={{ ...styles.status, ...styles.interactive }}
-        aria-label={canOpen ? `${label}，查看成员已读详情` : label}
+        aria-label={canOpen ? tr("{v0}，查看成员已读详情", { v0: label }) : label}
         onKeyDown={event => {
           if (detailOpen && event.key === 'Escape' && !event.nativeEvent.isComposing) {
             event.stopPropagation()
@@ -471,6 +475,7 @@ export function ArkmeMessageReadReceiptLine(props: {
   wide?: boolean
   children: ReactNode
 }) {
+  useArkmeLocale()
   const elementRef = useRef<HTMLDivElement>(null)
   return <ArkmeMentionReadProvider source={props.source} item={props.item} elementRef={elementRef}><div
     ref={elementRef}

@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale, arkmeIntlLocale } from './locale.js'
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import type { ArkmeRecordSearchResult, ArkmeSearchRecordItem } from '../types.js'
@@ -22,11 +23,12 @@ function identity(item: ArkmeSearchRecordItem): string {
 
 function articleDate(value: number): string {
   if (!Number.isFinite(value) || value <= 0) return ''
-  return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(value)
+  return new Intl.DateTimeFormat(arkmeIntlLocale(), { year: 'numeric', month: '2-digit', day: '2-digit' }).format(value)
 }
 
 /** Browse the same long-article scene as Flutter, without turning it into an unfiltered keyword search. */
 export function ArkmeLongArticleQuickView({ scrollRoot }: { scrollRoot?: RefObject<HTMLElement> }) {
+  useArkmeLocale()
   const [page, setPage] = useState<ArkmeRecordSearchResult>()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -88,7 +90,7 @@ export function ArkmeLongArticleQuickView({ scrollRoot }: { scrollRoot?: RefObje
     opener.current?.focus({ preventScroll: true })
   }, [])
 
-  return <section aria-label="长文快速查找">
+  return <section aria-label={tr("长文快速查找")}>
     {openError !== '' && <p role="alert" style={styles.state}>{openError}</p>}
     <div style={styles.list}>
       {page?.items.map(item => {
@@ -108,8 +110,8 @@ export function ArkmeLongArticleQuickView({ scrollRoot }: { scrollRoot?: RefObje
     </div>
     {!loading && !error && page?.items.length === 0 && <p style={styles.state}>{page.hasMore ? '正在查找更多长文…' : '暂无长文'}</p>}
     <div ref={sentinel} style={styles.state}>
-      {loading ? <span role="status">正在加载长文…</span> : error ? <span role="alert">{error}<button type="button" style={styles.retry} onClick={() => { void load(page?.hasMore ? page.nextCursor : undefined) }}>重试</button></span>
-        : page?.hasMore && <button type="button" style={styles.retry} onClick={() => { void load(page.nextCursor) }}>加载更多长文</button>}
+      {loading ? <span role="status">{tr("正在加载长文…")}</span> : error ? <span role="alert">{error}<button type="button" style={styles.retry} onClick={() => { void load(page?.hasMore ? page.nextCursor : undefined) }}>{tr("重试")}</button></span>
+        : page?.hasMore && <button type="button" style={styles.retry} onClick={() => { void load(page.nextCursor) }}>{tr("加载更多长文")}</button>}
     </div>
     {selected?.targetSource !== undefined && typeof document !== 'undefined' && createPortal(
       <ArkmeLongArticleDialog

@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale, arkmeIntlLocale } from './locale.js'
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type RefObject } from 'react'
 import type { ArkmeRecordSearchResult, ArkmeSearchRecordItem } from '../types.js'
 import { arkmeSearchRecordLinks } from '../search-record-links.js'
@@ -26,6 +27,7 @@ function links(item: ArkmeSearchRecordItem): string[] {
 }
 
 function LinkResult({ href, scrollRoot }: { href: string; scrollRoot?: RefObject<HTMLElement> | undefined }) {
+  useArkmeLocale()
   const node = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(typeof IntersectionObserver === 'undefined')
   useEffect(() => {
@@ -47,16 +49,17 @@ function LinkRecord({ item, scrollRoot, onOpenRecord }: {
   scrollRoot?: RefObject<HTMLElement> | undefined
   onOpenRecord(item: ArkmeSearchRecordItem): void | Promise<void>
 }) {
+  useArkmeLocale()
   const [expanded, setExpanded] = useState(false)
   const urls = links(item)
   const date = Number.isFinite(item.sendAtMillis) && item.sendAtMillis > 0
-    ? new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(item.sendAtMillis) : ''
+    ? new Intl.DateTimeFormat(arkmeIntlLocale(), { year: 'numeric', month: '2-digit', day: '2-digit' }).format(item.sendAtMillis) : ''
   return <article style={styles.card} data-arkme-link-record="true">
     {(expanded ? urls : urls.slice(0, 5)).map(href => <LinkResult key={href} href={href} scrollRoot={scrollRoot} />)}
     <footer style={styles.footer}>
       <span style={styles.meta}>{[item.sourceTitle || item.targetSource?.displayName, date].filter(Boolean).join(' · ')}</span>
-      {urls.length > 5 && <button type="button" style={styles.button} onClick={() => setExpanded(value => !value)}>{expanded ? '收起链接' : `展开另外 ${String(urls.length - 5)} 个链接`}</button>}
-      <button type="button" style={styles.button} data-arkme-feedback="neutral" onClick={() => { void onOpenRecord(item) }}>查看来源</button>
+      {urls.length > 5 && <button type="button" style={styles.button} onClick={() => setExpanded(value => !value)}>{expanded ? '收起链接' : tr("展开另外 {v0} 个链接", { v0: String(urls.length - 5) })}</button>}
+      <button type="button" style={styles.button} data-arkme-feedback="neutral" onClick={() => { void onOpenRecord(item) }}>{tr("查看来源")}</button>
     </footer>
   </article>
 }
@@ -66,6 +69,7 @@ export function ArkmeLinkQuickView({ scrollRoot, onOpenRecord }: {
   scrollRoot?: RefObject<HTMLElement>
   onOpenRecord(item: ArkmeSearchRecordItem): void | Promise<void>
 }) {
+  useArkmeLocale()
   const [page, setPage] = useState<ArkmeRecordSearchResult>()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -121,12 +125,12 @@ export function ArkmeLinkQuickView({ scrollRoot, onOpenRecord }: {
     return () => observer.disconnect()
   }, [error, load, loading, page, scrollRoot])
 
-  return <section aria-label="外部链接快速查找">
+  return <section aria-label={tr("外部链接快速查找")}>
     <div style={styles.list}>{page?.items.map(item => <LinkRecord key={identity(item)} item={item} scrollRoot={scrollRoot} onOpenRecord={onOpenRecord} />)}</div>
     {!loading && !error && page?.items.length === 0 && <p style={styles.state}>{page.hasMore ? '继续加载以查找更多链接' : '暂无外部链接'}</p>}
     <div ref={sentinel} style={styles.state}>
-      {loading ? <span role="status">正在加载链接…</span> : error ? <span role="alert">{error} <button type="button" style={styles.button} onClick={() => { void load(page?.hasMore ? page.nextCursor : undefined) }}>重试</button></span>
-        : page?.hasMore && <button type="button" style={styles.button} onClick={() => { void load(page.nextCursor) }}>加载更多链接</button>}
+      {loading ? <span role="status">{tr("正在加载链接…")}</span> : error ? <span role="alert">{error} <button type="button" style={styles.button} onClick={() => { void load(page?.hasMore ? page.nextCursor : undefined) }}>{tr("重试")}</button></span>
+        : page?.hasMore && <button type="button" style={styles.button} onClick={() => { void load(page.nextCursor) }}>{tr("加载更多链接")}</button>}
     </div>
   </section>
 }

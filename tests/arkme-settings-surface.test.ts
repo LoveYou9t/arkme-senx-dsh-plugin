@@ -1,11 +1,11 @@
-import { readFileSync } from 'node:fs'
+import { readUiSource } from './helpers/ui-source.js'
 import { describe, expect, it } from 'vitest'
 
-const source = readFileSync(new URL('../src/client/ArkmeSettingsSurface.tsx', import.meta.url), 'utf8')
-const shellSource = readFileSync(new URL('../src/client/ArkmePersistentShell.tsx', import.meta.url), 'utf8')
-const navigationSource = readFileSync(new URL('../src/client/ArkmeProductNavigation.tsx', import.meta.url), 'utf8')
-const adapterSource = readFileSync(new URL('../src/client/index.tsx', import.meta.url), 'utf8')
-const redesignCss = readFileSync(new URL('../src/client/redesign/arkme-redesign.css', import.meta.url), 'utf8')
+const source = readUiSource(new URL('../src/client/ArkmeSettingsSurface.tsx', import.meta.url), 'utf8')
+const shellSource = readUiSource(new URL('../src/client/ArkmePersistentShell.tsx', import.meta.url), 'utf8')
+const navigationSource = readUiSource(new URL('../src/client/ArkmeProductNavigation.tsx', import.meta.url), 'utf8')
+const adapterSource = readUiSource(new URL('../src/client/index.tsx', import.meta.url), 'utf8')
+const redesignCss = readUiSource(new URL('../src/client/redesign/arkme-redesign.css', import.meta.url), 'utf8')
 
 describe('ArkmeSettingsSurface', () => {
   it('keeps Arkme account and APP update capabilities with a read-only plugin version', () => {

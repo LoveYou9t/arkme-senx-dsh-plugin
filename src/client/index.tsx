@@ -7,7 +7,12 @@ import type { ArkmeSourceItem, ArkmeSourceList } from '../types.js'
 import './composer-draft-auth-binding.js'
 import './private-chat-actions-auth-binding.js'
 import { callArkme } from './api.js'
+import { connectArkmeLocale, tr } from './locale.js'
 import { ArkmeSettingsSurface } from './ArkmeSettingsSurface.js'
+import { ArkmeAccountUsageSettings } from './ArkmeAccountUsageSettings.js'
+import { ArkmeDataManagementSettings } from './ArkmeDataManagementSettings.js'
+import { selectArkmeSettingsSection } from './settings-navigation.js'
+import type { ArkmeSettingsSection } from './ui-controller.js'
 import { ArkmeStartupAuthGate, startupAuthGateEnabled } from './ArkmeStartupAuthGate.js'
 import { ArkmeWebLoginOverlay } from './ArkmeWebLoginOverlay.js'
 import {
@@ -113,6 +118,7 @@ export function apply(ctx: ClientContext): void {
     en: arkmeLoginEn,
   }), 'dsh-arkme: login dictionaries')
   const loginT = ctx.locale.bind(ARKME_LOGIN_LOCALE_NAMESPACE)
+  ctx.effect(() => connectArkmeLocale(ctx.locale), 'dsh-arkme: product language')
 
   ctx.effect(() => arkmeAppUpdateStore.start(), 'dsh-arkme: client app update bridge')
   ctx.effect(() => installHarnessConversationLayoutLoader(ctx, document), 'dsh-arkme: native wide conversation exports')
@@ -242,7 +248,7 @@ export function apply(ctx: ClientContext): void {
       settingsOpened = false
       mountArkmeSidebar()
     }
-    const openOfficialSettings = () => {
+    const openOfficialSettings = (section: ArkmeSettingsSection = 'arkme-account') => {
       if (disposed || typeof document === 'undefined' || typeof window === 'undefined') return
       stopSettingsTimer()
       disposeSidebar?.()
@@ -250,6 +256,7 @@ export function apply(ctx: ClientContext): void {
       settingsOpened = false
       let attempts = 0
       let triggerClicked = false
+      let sectionSelected = false
       settingsTimer = window.setInterval(() => {
         if (disposed) return
         attempts += 1
@@ -266,6 +273,7 @@ export function apply(ctx: ClientContext): void {
         }
         const open = trigger?.getAttribute('aria-expanded') === 'true'
         if (open) settingsOpened = true
+        if (open && !sectionSelected) sectionSelected = selectArkmeSettingsSection(section)
         if (settingsOpened && !open) {
           restoreArkmeSidebar()
           return
@@ -328,9 +336,17 @@ export function apply(ctx: ClientContext): void {
   ctx.slots.inject('settings.section', () => ctx.slots.register({
     name: 'settings.section',
     id: 'arkme-account',
-    order: -1,
-    label: '我的账户',
+    order: -3,
+    label: () => tr('我的账户'),
   }, ArkmeDshSettingsSection))
+
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section', id: 'arkme-usage', order: -2, label: () => tr('用量与额度'),
+  }, ArkmeAccountUsageSettings))
+
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section', id: 'arkme-data', order: -1, label: () => tr('数据管理'),
+  }, ArkmeDataManagementSettings))
 
   ctx.slots.inject('settings.general.item', () => ctx.slots.register({
     name: 'settings.general.item',
@@ -342,7 +358,7 @@ export function apply(ctx: ClientContext): void {
     name: 'settings.section',
     id: 'arkme-about',
     order: 100,
-    label: '关于',
+    label: () => tr('关于'),
   }, () => <ArkmeSettingsSurface view="about" />))
 
   if (!startupAuthGateEnabled()) {

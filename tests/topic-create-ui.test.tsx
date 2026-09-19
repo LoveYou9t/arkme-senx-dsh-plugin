@@ -76,7 +76,7 @@ describe('topic create UI', () => {
     visit(file)
     expect(toolbars).toHaveLength(1)
     const toolbar = toolbars[0]!.getText(file)
-    const addIndex = toolbar.indexOf('aria-label="添加内容"')
+    const addIndex = toolbar.indexOf('aria-label={tr("添加内容")}')
     const sendIndex = toolbar.indexOf('<ArkmeComposerSendButton')
     expect(addIndex).toBeGreaterThanOrEqual(0)
     expect(sendIndex).toBeGreaterThanOrEqual(0)

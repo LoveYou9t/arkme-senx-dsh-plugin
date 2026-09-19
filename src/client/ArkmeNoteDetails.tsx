@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale, arkmeIntlLocale } from './locale.js'
 import { ArkmeRecordEditHistory } from './ArkmeRecordEditHistory.js'
 import { ArkmeBotSenderName } from './ArkmeBotIdentity.js'
 import { ArkmeDetailShell } from './ArkmeDetailShell.js'
@@ -135,12 +136,12 @@ function epoch(value: number): number {
 
 function dateLabel(value: number): string {
   const time = epoch(value)
-  return time === 0 ? '' : new Date(time).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
+  return time === 0 ? '' : new Date(time).toLocaleDateString(arkmeIntlLocale(), { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
 function timeLabel(value: number): string {
   const time = epoch(value)
-  return time === 0 ? '' : new Date(time).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+  return time === 0 ? '' : new Date(time).toLocaleTimeString(arkmeIntlLocale(), { hour: '2-digit', minute: '2-digit', hour12: false })
 }
 
 function offsetLabel(value: number): string {
@@ -202,10 +203,10 @@ function DetailMentionSuggestions({ candidates, activeIndex, onActiveIndexChange
   onActiveIndexChange: (index: number) => void
   onSelect: (candidate: ArkmeMentionCandidate) => void
 }) {
-  return <div style={styles.mentionSuggestions} role="listbox" aria-label="选择要 @ 的对象">
+  return <div style={styles.mentionSuggestions} role="listbox" aria-label={tr("选择要 @ 的对象")}>
     <ArkmeMentionSuggestionThemeStyles />
     {candidates.length === 0
-      ? <div style={styles.mentionSuggestionsEmpty}>暂无可 @ 的对象</div>
+      ? <div style={styles.mentionSuggestionsEmpty}>{tr("暂无可 @ 的对象")}</div>
       : candidates.map((candidate, index) => <ArkmeMentionSuggestionRow
         key={arkmeMentionCandidateKey(candidate)}
         candidate={candidate}
@@ -237,6 +238,7 @@ function DetailExtensionComposer({ sourceRef, sourceKind, conversationMembers, m
   messageCreationBlocked: boolean
   messageCreationRestriction: string
 }) {
+  useArkmeLocale()
   const [text, setText] = useState('')
   const [mentions, setMentions] = useState<ArkmeComposerMention[]>([])
   const [emojis, setEmojis] = useState<ArkmeComposerEmoji[]>([])
@@ -419,12 +421,12 @@ function DetailExtensionComposer({ sourceRef, sourceKind, conversationMembers, m
       for (const file of selected) {
         controller.signal.throwIfAborted()
         if (attachments.length + next.length >= policy.maxAttachments) {
-          failures.push(`最多添加 ${String(policy.maxAttachments)} 个附件：${file.name}`)
+          failures.push(tr("最多添加 {v0} 个附件：{v1}", { v0: String(policy.maxAttachments), v1: file.name }))
           continue
         }
         const limit = file.type.startsWith('image/') ? policy.maxImageBytes : policy.maxFileBytes
         if (file.size <= 0 || file.size > limit) {
-          failures.push(`${file.name} 为空或超过 ${String(Math.floor(limit / 1024 / 1024))} MiB`)
+          failures.push(tr("{v0} 为空或超过 {v1} MiB", { v0: file.name, v1: String(Math.floor(limit / 1024 / 1024)) }))
           continue
         }
         try {
@@ -434,7 +436,7 @@ function DetailExtensionComposer({ sourceRef, sourceKind, conversationMembers, m
           next.push({ localFile, ...(previewUrl === undefined ? {} : { previewUrl }) })
         } catch (caught) {
           if (controller.signal.aborted) throw caught
-          failures.push(caught instanceof Error ? `${file.name}：${caught.message}` : `${file.name}：附件准备失败`)
+          failures.push(caught instanceof Error ? `${file.name}：${caught.message}` : tr("{v0}：附件准备失败", { v0: file.name }))
         }
       }
       if (!controller.signal.aborted && next.length > 0) {
@@ -552,9 +554,9 @@ function DetailExtensionComposer({ sourceRef, sourceKind, conversationMembers, m
         onSelect={insertMentionCandidate}
       />}
       <div className="arkme-detail-extension-input-shell" style={styles.extensionInputWrap}>
-        <button data-arkme-feedback="neutral" type="button" style={{ ...styles.extensionTool, opacity: disabled ? .4 : 1 }} aria-label="添加延展附件" disabled={disabled}
+        <button data-arkme-feedback="neutral" type="button" style={{ ...styles.extensionTool, opacity: disabled ? .4 : 1 }} aria-label={tr("添加延展附件")} disabled={disabled}
           onClick={() => { fileInputRef.current?.click() }}>{preparing ? <ArkmeFilePreparingIndicator /> : <FileTextIcon size={18} />}</button>
-        <ArkmeRichComposerInput ref={inputRef} style={styles.extensionInput!} ariaLabel="延展此快记" placeholder="延展此快记..." value={text} disabled={disabled}
+        <ArkmeRichComposerInput ref={inputRef} style={styles.extensionInput!} ariaLabel={tr("延展此快记")} placeholder={tr("延展此快记...")} value={text} disabled={disabled}
           mentions={mentions} emojis={emojis} maxLength={20000} markdownEnabled={markdownEnabled} markdown={markdown}
           onTextChange={updateText} onMarkdownChange={(value, nextText, nextMentions, nextEmojis) => {
             if (disabled) return
@@ -603,7 +605,7 @@ function DetailExtensionComposer({ sourceRef, sourceKind, conversationMembers, m
             }
           }} />
         <ArkmeComposerSendButton
-          ariaLabel="发送延展"
+          ariaLabel={tr("发送延展")}
           disabled={disabled || !canSend}
           onClick={() => { void send() }}
         />
@@ -670,7 +672,7 @@ function DetailExtensionAvatar({ item, size = 32 }: { item: ArkmeMessageCopyLink
       <img src={avatar} alt="" draggable={false} style={styles.extensionContextAvatarImage} />
     </span>
   }
-  if (avatar !== '') return <ArkmeUserAvatar avatarRef={avatar} size={size} label="延展作者头像" />
+  if (avatar !== '') return <ArkmeUserAvatar avatarRef={avatar} size={size} label={tr("延展作者头像")} />
   return <span style={{ ...styles.extensionContextAvatarFallback, width: size, height: size }} aria-hidden>{[...name][0] ?? '?'}</span>
 }
 
@@ -733,12 +735,12 @@ function DetailExtensionContext({
   if (state.kind === 'loading' && extensions.length === 0) return null
   if (state.kind === 'error' && extensions.length === 0) {
     return <div style={styles.extensionContext}><div role="alert" style={styles.extensionContextStatus}>
-      <span>{state.message}</span><button data-arkme-feedback="neutral" type="button" style={styles.extensionContextRetry} onClick={onRetry}>重试</button>
+      <span>{state.message}</span><button data-arkme-feedback="neutral" type="button" style={styles.extensionContextRetry} onClick={onRetry}>{tr("重试")}</button>
     </div></div>
   }
   if (extensionCount === 0) return null
-  return <section style={styles.extensionContext} aria-label="快记延展列表">
-    <div style={styles.extensionContextTitle} data-arkme-note-extension-count="true">共{extensionCount}条延展</div>
+  return <section style={styles.extensionContext} aria-label={tr("快记延展列表")}>
+    <div style={styles.extensionContextTitle} data-arkme-note-extension-count="true">{tr("共")}{extensionCount}{tr("条延展")}</div>
     <div style={styles.extensionContextList}>{orderedDetailExtensions(extensions, context?.parentRecordUid ?? '').map(({ item: extension, nested }) => {
       const timelineItem = detailExtensionTimelineItem(extension)
       const selected = extension.recordUid === selectedRecordUid
@@ -804,6 +806,7 @@ export function ArkmeTimelineDetailDrawer({
   messageCreationBlocked?: boolean
   messageCreationRestriction?: string
 }) {
+  useArkmeLocale()
   const [editHistoryTarget, setEditHistoryTarget] = useState<string>()
   const [relatedView, setRelatedView] = useState<ArkmeRelatedDrawerView>('source-detail')
   const [relatedState, setRelatedState] = useState<ArkmeRelatedQuickNotesLoadState>({ kind: 'idle' })
@@ -969,8 +972,8 @@ export function ArkmeTimelineDetailDrawer({
   />
   if (relatedView === 'related-list') {
     const total = relatedState.kind === 'success' ? relatedState.list.total : 0
-    return <ArkmeDetailShell title={`${String(total)} 条相关快记`} label="相关快记列表"
-      onClose={closeDrawer} onBack={backRelated} backLabel="返回快记详情" bodyRef={bodyRef} footer={extensionFooter}>
+    return <ArkmeDetailShell title={tr("{v0} 条相关快记", { v0: String(total) })} label={tr("相关快记列表")}
+      onClose={closeDrawer} onBack={backRelated} backLabel={tr("返回快记详情")} bodyRef={bodyRef} footer={extensionFooter}>
       <div>
         <ArkmeRelatedQuickNotesList state={relatedState}
           onRetry={loadRelated}
@@ -982,8 +985,8 @@ export function ArkmeTimelineDetailDrawer({
     </ArkmeDetailShell>
   }
   if (relatedView === 'related-detail') {
-    return <ArkmeDetailShell title="相关快记详情" label="相关快记详情"
-      onClose={closeDrawer} onBack={backRelated} backLabel="返回相关快记列表" bodyRef={bodyRef} footer={extensionFooter}>
+    return <ArkmeDetailShell title={tr("相关快记详情")} label={tr("相关快记详情")}
+      onClose={closeDrawer} onBack={backRelated} backLabel={tr("返回相关快记列表")} bodyRef={bodyRef} footer={extensionFooter}>
       <ArkmeRelatedQuickNoteDetail
         state={relatedDetailState}
         onRetry={loadRelatedDetail}
@@ -993,10 +996,10 @@ export function ArkmeTimelineDetailDrawer({
       />
     </ArkmeDetailShell>
   }
-  return <ArkmeDetailShell title={historyOpen ? "编辑记录" : "快记详情"} label={historyOpen ? "编辑记录" : "快记详情"}
+  return <ArkmeDetailShell title={historyOpen ? tr("编辑记录") : tr("快记详情")} label={historyOpen ? tr("编辑记录") : tr("快记详情")}
     onClose={closeDrawer} bodyRef={bodyRef} footer={extensionFooter} footerHidden={historyOpen}
     headerContent={historyOpen ? undefined : <div data-arkme-detail-author style={{ ...styles.row, alignItems: 'center', ...(item.senderKind === 'bot' ? { gap: 10 } : {}) }}>
-      <ArkmeUserAvatar senderKind={item.senderKind} {...(item.avatarRef === undefined ? {} : { avatarRef: item.avatarRef })} size={40} label="作者头像" />
+      <ArkmeUserAvatar senderKind={item.senderKind} {...(item.avatarRef === undefined ? {} : { avatarRef: item.avatarRef })} size={40} label={tr("作者头像")} />
       <div style={styles.content}><div style={styles.name}>{item.senderKind === 'bot' ? <ArkmeBotSenderName name={arkmeTimelineDetailSenderText(item, conversationMembers)} detail /> : arkmeTimelineDetailSenderText(item, conversationMembers)}</div>
         <div style={{ ...styles.time, marginTop: item.senderKind === 'bot' ? 2 : 4, ...(item.senderKind === 'bot' ? { fontSize: 12 } : {}) }}>{[dateLabel(item.sendAtMillis), timeLabel(item.sendAtMillis)].filter(Boolean).join(' ')}</div>
       </div>
@@ -1020,11 +1023,11 @@ export function ArkmeTimelineDetailDrawer({
     {sourceBadge}
     <style>{`.arkme-edit-history-entry { background: transparent; } .arkme-edit-history-entry:hover { background: ${arkmeTheme.hover}; }`}</style>
     {item.hasManualEdit === true && normalizedSourceRef !== '' && messageActionRef !== '' && <button data-arkme-feedback="neutral"
-      type="button" aria-label="已编辑" className="arkme-edit-history-entry" style={{ display: 'flex', alignItems: 'center', gap: 2, height: 32, marginTop: 5, padding: 0, border: 0, borderRadius: 4, color: arkmeTheme.tertiary, font: 'inherit', fontSize: 12, cursor: 'pointer' }}
+      type="button" aria-label={tr("已编辑")} className="arkme-edit-history-entry" style={{ display: 'flex', alignItems: 'center', gap: 2, height: 32, marginTop: 5, padding: 0, border: 0, borderRadius: 4, color: arkmeTheme.tertiary, font: 'inherit', fontSize: 12, cursor: 'pointer' }}
       onClick={() => {
         if (bodyRef.current !== null) scrollTopByViewRef.current['source-detail'] = bodyRef.current.scrollTop
         setEditHistoryTarget(historyTarget)
-      }}>已编辑<CaretRight size={12} style={{ flex: 'none' }} aria-hidden /></button>}
+      }}>{tr("已编辑")}<CaretRight size={12} style={{ flex: 'none' }} aria-hidden /></button>}
     {quickNoteDetailsSupported && item.extensionParent !== undefined && <DetailExtensionParent parent={item.extensionParent} />}
     {quickNoteDetailsSupported && <ArkmeRelatedQuickNotesCard
       state={relatedState}
@@ -1076,8 +1079,8 @@ export function ForwardRecordsDetail({ item, onClose, sourceBadge }: { item: Ark
     const startedAt = recording.sendAtMillis
     const selectedAt = startedAt > 0 ? startedAt + Math.min(...segments.map(segment => segment.startMillis)) : 0
     const selectedDate = selectedAt > 0 ? new Date(selectedAt) : undefined
-    return <ArkmeDetailShell title={recording.title || forward.title || '录音转写'} label="录音片段详情"
-      subtitle={selectedDate === undefined ? '' : `${selectedDate.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })} ${selectedDate.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })}`} onClose={onClose}>
+    return <ArkmeDetailShell title={recording.title || forward.title || tr("录音转写")} label={tr("录音片段详情")}
+      subtitle={selectedDate === undefined ? '' : `${selectedDate.toLocaleDateString(arkmeIntlLocale(), { year: 'numeric', month: 'long', day: 'numeric' })} ${selectedDate.toLocaleTimeString(arkmeIntlLocale(), { hour: '2-digit', minute: '2-digit', hour12: false })}`} onClose={onClose}>
       {sourceBadge}
       <div data-arkme-forward-recording-detail>
         {segments.map((segment, index) => {
@@ -1093,7 +1096,7 @@ export function ForwardRecordsDetail({ item, onClose, sourceBadge }: { item: Ark
           </div>
         })}
       </div>
-      {(forward.truncated || recording.truncated) && <p style={styles.notice}>内容较多，当前展示部分转发记录</p>}
+      {(forward.truncated || recording.truncated) && <p style={styles.notice}>{tr("内容较多，当前展示部分转发记录")}</p>}
     </ArkmeDetailShell>
   }
   const dates = forward.items.map(value => epoch(value.sendAtMillis)).filter(value => value > 0)
@@ -1136,17 +1139,17 @@ export function ForwardRecordsDetail({ item, onClose, sourceBadge }: { item: Ark
           senderName: segment.speakerName, title: '', textContent: segment.textContent,
           contentBlocks: segment.contentBlocks ?? [], mediaUnavailable: segment.mediaUnavailable === true }} highlightMentions />
       </ForwardDetailRow>)}
-      {segments.length > 0 && value.mediaUnavailable && <p style={styles.notice}>部分媒体暂时无法加载，请刷新对话后重试</p>}
-      {value.truncated && <p style={styles.notice}>内容较多，当前展示部分转发内容</p>}
+      {segments.length > 0 && value.mediaUnavailable && <p style={styles.notice}>{tr("部分媒体暂时无法加载，请刷新对话后重试")}</p>}
+      {value.truncated && <p style={styles.notice}>{tr("内容较多，当前展示部分转发内容")}</p>}
     </div>
   }
   const forwardedAt = [dateLabel(forward.createdAtMillis), timeLabel(forward.createdAtMillis)].filter(Boolean).join(' ')
-  return <ArkmeDetailShell title={forward.title || '转发快记'} label="转发快记详情"
-    subtitle={firstDate === lastDate ? firstDate : `${firstDate} 至 ${lastDate}`}
-    footer={forwardedAt ? `转发于 ${forwardedAt}` : '转发时间未知'} onClose={onClose}>
+  return <ArkmeDetailShell title={forward.title || '转发快记'} label={tr("转发快记详情")}
+    subtitle={firstDate === lastDate ? firstDate : tr("{v0} 至 {v1}", { v0: firstDate, v1: lastDate })}
+    footer={forwardedAt ? tr("转发于 {v0}", { v0: forwardedAt }) : '转发时间未知'} onClose={onClose}>
     {sourceBadge}
     <div style={styles.rows}>{rows.map(renderRecord)}</div>
-    {rows.length === 0 && <p style={styles.notice}>原快记暂不可查看</p>}
-    {forward.truncated && <p style={styles.notice}>内容较多，当前展示部分转发记录</p>}
+    {rows.length === 0 && <p style={styles.notice}>{tr("原快记暂不可查看")}</p>}
+    {forward.truncated && <p style={styles.notice}>{tr("内容较多，当前展示部分转发记录")}</p>}
   </ArkmeDetailShell>
 }

@@ -1,19 +1,20 @@
+import { arkmeIntlLocale, tr } from './locale.js'
 import { useCallback, useEffect, useState } from 'react'
 import type { ArkmeMembership } from '../types.js'
 import { callArkme } from './api.js'
 
 export type MembershipState = { status: 'loading' | 'error' } | { status: 'ready'; value: ArkmeMembership }
 export function membershipLabel(state: MembershipState): string {
-  if (state.status !== 'ready') return state.status === 'loading' ? '读取中' : '待确认'
-  return ['免费版', 'VIP', 'SVIP'][state.value.memberType] ?? '待确认'
+  if (state.status !== 'ready') return tr(state.status === 'loading' ? '读取中' : '待确认')
+  return tr(['免费版', 'VIP', 'SVIP'][state.value.memberType] ?? '待确认')
 }
 export function membershipDescription(state: MembershipState): string {
-  if (state.status !== 'ready') return state.status === 'loading' ? '正在读取会员状态' : '会员状态暂时无法确认，点击重试'
+  if (state.status !== 'ready') return tr(state.status === 'loading' ? '正在读取会员状态' : '会员状态暂时无法确认，点击重试')
   const member = state.value
-  if (member.memberType === 0) return '查看更多存储、转写与协作权益'
-  if (member.lifetime) return '永久会员'
-  const date = member.expireAtMillis === null ? '有效期以手机端为准' : `${new Date(member.expireAtMillis).toLocaleDateString('zh-CN')} 到期`
-  return member.gifted ? `赠送会员 · ${date}` : date
+  if (member.memberType === 0) return tr('查看更多存储、转写与协作权益')
+  if (member.lifetime) return tr('永久会员')
+  const date = member.expireAtMillis === null ? tr('有效期以手机端为准') : tr('{date} 到期', { date: new Date(member.expireAtMillis).toLocaleDateString(arkmeIntlLocale()) })
+  return member.gifted ? tr('赠送会员 · {date}', { date }) : date
 }
 
 /** Never retain one account's membership under another account, even for one render. */

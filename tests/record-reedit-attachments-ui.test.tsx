@@ -199,7 +199,7 @@ describe('record re-edit attachment UI', () => {
     expect(footers[0]!.findByProps({ 'data-arkme-composer-footer': 'hint' })).toBe(footers[1])
     expect(footers[1]!.props.title).toBe('Enter发送 / Shift+Enter换行')
     expect(footers[1]!.children[0]).toBe('Enter发送')
-    expect(footers[1]!.findByProps({ className: 'arkme-composer-shortcut-details' }).children).toEqual([' / Shift+Enter换行'])
+    expect(footers[1]!.findByProps({ className: 'arkme-composer-shortcut-details' }).children.join('')).toEqual(' / Shift+Enter换行')
     const event = { currentTarget: {}, target: {}, button: 0, defaultPrevented: false }
     act(() => outer.props.onClick(event))
     expect(focus).toHaveBeenLastCalledWith(expect.objectContaining({ disabled: false, focus: expect.any(Function) }), event)

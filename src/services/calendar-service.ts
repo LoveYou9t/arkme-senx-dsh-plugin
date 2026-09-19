@@ -1,4 +1,5 @@
 import type {
+  ArkmeCalendarRecordLocation,
   ArkmeCalendarScopeKind,
   ArkmeSourceItem,
   ArkmeCalendarBucketDay,
@@ -18,6 +19,8 @@ import { isDshAgentInputRawRecord } from '../dsh-agent-input-source.js'
 import { ARKME_DSH_INPUT_TOPIC_KIND } from '../topic-policy.js'
 import { SharedReadGroup } from '../shared-read-group.js'
 import { recordOwnerId } from '../record-owner-id.js'
+import { randomUUID } from 'node:crypto'
+import { recordLocationObservation } from '../record-location-observation.js'
 
 const MAX_CALENDAR_RANGE_DAYS = 62
 const MAX_DAY_RECORD_LIMIT = 50
@@ -131,13 +134,15 @@ function sourceKind(raw: Record<string, unknown>): ArkmeCalendarRecordItem['sour
 }
 
 export class CalendarService {
+  // Capabilities contain no coordinates; bounded and never persisted across runtime restarts.
+  private readonly locationRefs = new Map<string, { userId: number; origin: string; recordUid: string; expires: number }>()
   private readonly months = new Map<string, CachedCalendarValue<ArkmeCalendarBucketPage>>()
   private readonly monthReads = new SharedReadGroup<ArkmeCalendarBucketPage>()
   // Keep only finished daily counts/anchors, never record bodies. This lets a
   // date-scoped change or interrupted month reuse unaffected completed days.
   private readonly days = new Map<string, CachedCalendarValue<ArkmeCalendarBucketDay>>()
   private readonly dayReads = new SharedReadGroup<CachedCalendarValue<ArkmeCalendarBucketDay>>()
-  dispose(): void { this.months.clear(); this.monthReads.clear(); this.days.clear(); this.dayReads.clear() }
+  dispose(): void { this.months.clear(); this.monthReads.clear(); this.days.clear(); this.dayReads.clear(); this.locationRefs.clear() }
   constructor(
     private readonly runtime: ServiceRuntime,
     private readonly privacy: ArkmePrivacyVisibilityService,
@@ -145,6 +150,55 @@ export class CalendarService {
     private readonly record: RecordService,
     private readonly source: SourceService,
   ) {}
+
+  private issueLocationRef(recordUid: string, session: ArkmeSessionCredentials): string {
+    const now = Date.now()
+    for (const [key, ref] of this.locationRefs) if (ref.expires <= now) this.locationRefs.delete(key)
+    while (this.locationRefs.size >= 1000) this.locationRefs.delete(this.locationRefs.keys().next().value!)
+    const ref = randomUUID()
+    this.locationRefs.set(ref, { userId: session.userId, origin: this.runtime.config?.recordBaseUrl ?? '',
+      recordUid, expires: now + 15 * 60_000 })
+    return ref
+  }
+
+  /** Local Host adapter over existing owner APIs, not a new backend endpoint. */
+  async recordLocation(locationRef: string, signal?: AbortSignal): Promise<ArkmeCalendarRecordLocation> {
+    signal?.throwIfAborted()
+    const session = await this.runtime.requireSession()
+    const ref = this.locationRefs.get(locationRef)
+    if (!ref || ref.userId !== session.userId || ref.origin !== (this.runtime.config?.recordBaseUrl ?? '') || ref.expires <= Date.now()) {
+      throw new ArkmePluginError('calendar-location-ref-invalid', '地点入口已过期，请刷新当天活动', false, 400)
+    }
+    const restricted = (): ArkmeCalendarRecordLocation => ({ recordUid: ref.recordUid, access: 'restricted' })
+    if ((await this.privacy.lockedRecordUids(session, signal)).has(ref.recordUid)) return restricted()
+    const raw = await this.runtime.authenticatedPost<Record<string, unknown>>('/api/v1/records/detail',
+      { record_uid: ref.recordUid }, session, signal, { lane: 'interactive-read' })
+    const core = objectValue(raw.record_core ?? raw.recordCore ?? raw.record ?? raw)
+    if (stringValue(core.record_uid ?? raw.record_uid ?? core.uid) !== ref.recordUid) {
+      throw new ArkmePluginError('calendar-location-mismatch', '地点与当前记录不一致，请刷新', true, 502)
+    }
+    // Revalidate live owner/access. A calendar reference is not permission to read somebody else's location.
+    const owner = recordOwnerId(core.owner_user_id ?? raw.owner_user_id ?? core.creator_user_id ?? raw.creator_user_id)
+    if (owner !== session.userId || contentAccessState(core.content_access_state ?? raw.content_access_state) !== 'available'
+      || arkmePrivacyLockedRecord(raw)) return restricted()
+    const context = await this.runtime.authenticatedPost<Record<string, unknown>>('/api/v1/records/location/context/get',
+      { record_uid: ref.recordUid }, session, signal, { lane: 'interactive-read' })
+    signal?.throwIfAborted()
+    const data = objectValue(context.data ?? context)
+    for (const value of [context.record_uid, context.recordUid, data.record_uid, data.recordUid]) {
+      if (value !== undefined && value !== ref.recordUid) throw new ArkmePluginError('calendar-location-mismatch', '地点与当前记录不一致，请刷新', true, 502)
+    }
+    if (arkmePrivacyLockedRecord(context) || arkmePrivacyLockedRecord(data)
+      || (await this.privacy.lockedRecordUids(session, signal)).has(ref.recordUid)) return restricted()
+    // Account/environment may change while either upstream request is in flight.
+    const latest = await this.runtime.requireSession()
+    signal?.throwIfAborted()
+    if (latest.userId !== ref.userId || (this.runtime.config?.recordBaseUrl ?? '') !== ref.origin || !this.locationRefs.has(locationRef)) {
+      throw new ArkmePluginError('calendar-location-ref-invalid', '账号已变化，请重新打开日历', false, 400)
+    }
+    const location = recordLocationObservation(raw, context)
+    return { recordUid: ref.recordUid, access: 'available', ...(location ? { location } : {}) }
+  }
 
   /** Same service-owned daily index used by Flutter private/group chat calendars. */
   async chatStatistics(options: {
@@ -492,7 +546,13 @@ export class CalendarService {
         })
         const topicUid = stringValue(objectValue(objectValue(raw).topic_core).topic_uid).trim()
         const source = item.topicTitle ? sources.get(`topic:${topicUid}`) : sources.get(chatUid(raw))
-        return { ...item, ...(source === undefined ? {} : { source }), textFormat: content.textFormat ?? 'plain', content: {
+        const rawItem = objectValue(raw), core = objectValue(rawItem.record_core)
+        const owner = recordOwnerId(core.owner_user_id ?? rawItem.owner_user_id ?? core.creator_user_id ?? rawItem.creator_user_id)
+        const ownCalendar = options.sourceRef === undefined && scope.kind === 'self' && (owner === 0 || owner === session.userId)
+        const location = ownCalendar ? recordLocationObservation(raw) : undefined
+        return { ...item, ...(ownCalendar ? { locationRef: this.issueLocationRef(item.recordUid, session) } : {}),
+          ...(location ? { locationObservation: location } : {}),
+          ...(source === undefined ? {} : { source }), textFormat: content.textFormat ?? 'plain', content: {
           ...content, title: item.title, textContent: arkmeEmojiClippedText(content.textContent, 40_000),
         } }
       }),

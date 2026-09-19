@@ -1,3 +1,4 @@
+import { tr } from './locale.js'
 import { Children, isValidElement, type CSSProperties, type ReactNode } from 'react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -71,7 +72,7 @@ export function ArkmeMarkdownBody({ text, highlightMentions = true, renderLink, 
         span: ({ children, node }) => {
           const ref = node?.properties['dataArkmeImageRef'] ?? node?.properties['data-arkme-image-ref']
           const alt = String(node?.properties['dataArkmeImageAlt'] ?? node?.properties['data-arkme-image-alt'] ?? '图片')
-          if (typeof ref === 'string') return renderImage?.(ref, alt) ?? <span>[{alt || '图片'}：不可用]</span>
+          if (typeof ref === 'string') return renderImage?.(ref, alt) ?? <span>[{alt || tr("图片")}{tr("：不可用]")}</span>
           const mentionIndex = node?.properties['data-arkme-mention-index'] ?? node?.properties['dataArkmeMentionIndex']
           const mention = typeof mentionIndex === 'number' ? mentionTargets?.[mentionIndex] : undefined
           if (highlightMentions && mention !== undefined) {
@@ -101,7 +102,7 @@ export function ArkmeMarkdownBody({ text, highlightMentions = true, renderLink, 
           const label = markdownLinkLabel(children)
           return renderLink?.({ href, text: label || href }) ?? <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
         },
-        input: ({ checked }) => <input type="checkbox" checked={Boolean(checked)} disabled aria-label={checked ? '已完成' : '未完成'} />,
+        input: ({ checked }) => <input type="checkbox" checked={Boolean(checked)} disabled aria-label={checked ? tr("已完成") : '未完成'} />,
       }}>{text}</Markdown>
     </div>
   </div>

@@ -58,6 +58,8 @@ export interface ArkmeUiState {
   extensionAuthorFilter?: ArkmeExtensionAuthorFilter
   calendarOpen?: boolean
   worldTarget?: ArkmeWorldViewTarget
+  worldInitialScope?: 'all' | 'mine'
+  worldNavigationRevision?: number
   /** Web-only login is an overlay so a logged-out Harness view remains in place. */
   webLoginDialogOpen?: boolean
 }
@@ -105,7 +107,7 @@ export class ArkmeUiController {
   /** Runtime-only conversation memory. A fresh client always starts in Harness. */
   private lastConversationDestination: ArkmeConversationDestination | undefined
   private readonly listeners = new Set<() => void>()
-  private settingsOpener: (() => void) | undefined
+  private settingsOpener: ((section?: ArkmeSettingsSection) => void) | undefined
   private conversationTargetRevision = 0
   private notificationActivationRevision = 0
   private searchTargetRevision = 0
@@ -121,13 +123,13 @@ export class ArkmeUiController {
     return () => { this.listeners.delete(listener) }
   }
 
-  bindSettingsOpener(opener: () => void): () => void {
+  bindSettingsOpener(opener: (section?: ArkmeSettingsSection) => void): () => void {
     this.settingsOpener = opener
     return () => { if (this.settingsOpener === opener) this.settingsOpener = undefined }
   }
 
-  openDshSettings(): void {
-    this.settingsOpener?.()
+  openDshSettings(section?: ArkmeSettingsSection): void {
+    this.settingsOpener?.(section)
   }
 
   focusSendToSelf(): void {
@@ -217,10 +219,10 @@ export class ArkmeUiController {
     this.publish(rest)
   }
 
-  showWorld(): void {
+  showWorld(scope: 'all' | 'mine' = 'all'): void {
     this.leaveContacts()
     const { selectedSource: _selectedSource, recordingTarget: _recordingTarget, calendarOpen: _calendarOpen, worldTarget: _worldTarget, productMode: _productMode, ...rest } = this.state
-    this.publish({ ...rest, mode: 'world' })
+    this.publish({ ...rest, mode: 'world', worldInitialScope: scope, worldNavigationRevision: (this.state.worldNavigationRevision ?? 0) + 1 })
   }
 
   showUserWorld(target: ArkmeWorldTarget): void {
@@ -456,6 +458,10 @@ export class ArkmeUiController {
   }
 
   private publish(next: ArkmeUiState): void {
+    if (next.mode !== 'world') {
+      const { worldInitialScope: _scope, worldNavigationRevision: _revision, ...rest } = next
+      next = rest
+    }
     const sameView = next.authRevision === this.state.authRevision
       && next.mode === this.state.mode
       && next.productMode === this.state.productMode
@@ -477,6 +483,8 @@ export class ArkmeUiController {
       && next.extensionAuthorFilter?.ownerName === this.state.extensionAuthorFilter?.ownerName
       && next.webLoginDialogOpen === this.state.webLoginDialogOpen
       && sameWorldTarget(next.worldTarget, this.state.worldTarget)
+      && next.worldInitialScope === this.state.worldInitialScope
+      && next.worldNavigationRevision === this.state.worldNavigationRevision
       && sameSelectedSource(next.selectedSource, this.state.selectedSource)
       && sameBot(next.selectedBot, this.state.selectedBot)
     if (sameView
@@ -493,3 +501,4 @@ export class ArkmeUiController {
 }
 
 export const arkmeUi = new ArkmeUiController()
+export type ArkmeSettingsSection = 'arkme-account' | 'arkme-usage' | 'arkme-data'

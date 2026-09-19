@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readUiSource } from './helpers/ui-source.js'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { describe, expect, it } from 'vitest'
@@ -10,23 +10,23 @@ import { arkmeAttentionSummary } from '../src/client/attention-summary-store.js'
 import { arkmeChatDirectory } from '../src/client/chat-directory-store.js'
 import { arkmeUi } from '../src/client/ui-controller.js'
 
-const productNavigationSource = readFileSync(
+const productNavigationSource = readUiSource(
   new URL('../src/client/ArkmeProductNavigation.tsx', import.meta.url),
   'utf8',
 )
-const persistentShellSource = readFileSync(
+const persistentShellSource = readUiSource(
   new URL('../src/client/ArkmePersistentShell.tsx', import.meta.url),
   'utf8',
 )
-const realtimeClientEventsSource = readFileSync(
+const realtimeClientEventsSource = readUiSource(
   new URL('../src/client/realtime-client-events.ts', import.meta.url),
   'utf8',
 )
-const footerDropdownSource = readFileSync(
+const footerDropdownSource = readUiSource(
   new URL('../src/client/ArkmeFooterDropdown.tsx', import.meta.url),
   'utf8',
 )
-const redesignCss = readFileSync(
+const redesignCss = readUiSource(
   new URL('../src/client/redesign/arkme-redesign.css', import.meta.url),
   'utf8',
 )
@@ -43,6 +43,7 @@ describe('Arkme product navigation', () => {
       expect(nav.props.style.minWidth).toBe(60)
       const profile = renderer.root.findByProps({ 'aria-label': '个人资料' })
       const avatar = profile.findByProps({ 'data-arkme-avatar': true })
+      expect(profile.children[0]).toEqual(expect.objectContaining({ props: expect.objectContaining({ className: 'arkme-member-label' }) }))
       expect(avatar.props.style.width).toBe(36)
       expect(avatar.props.style.height).toBe(36)
       const active = renderer.root.findByProps({ 'aria-current': 'page' })
@@ -99,9 +100,12 @@ describe('Arkme product navigation', () => {
     expect(footerDropdownSource).not.toContain('totalUnreadCount')
   })
 
-  it('opens voiceprint management while the account entry lives in DSH settings', () => {
-    expect(productNavigationSource).toContain('arkmeUi.showVoiceprint()')
-    expect(productNavigationSource).toContain('<strong>声纹管理</strong>')
+  it('moves voiceprint into recordings and keeps only data/settings menu rows', () => {
+    expect(productNavigationSource).not.toContain('arkmeUi.showVoiceprint()')
+    expect(productNavigationSource).not.toContain('<strong>声纹管理</strong>')
+    expect(productNavigationSource).toContain('<strong>数据管理</strong>')
+    expect(productNavigationSource).toContain("arkmeUi.showWorld('mine')")
+    expect(productNavigationSource).toContain("arkmeUi.openDshSettings('arkme-usage')")
     expect(productNavigationSource).not.toContain('<strong>我的账户</strong>')
     expect(productNavigationSource).toContain('arkmeUi.openDshSettings()')
   })

@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import { useEffect, useRef, useState } from 'react'
 import { Scissors } from '@phosphor-icons/react/dist/icons/Scissors'
 import type { ArkmeDesktopScreenshotCapability, ArkmeDesktopScreenshotResult } from '../desktop-screenshot-contract.js'
@@ -16,6 +17,7 @@ export function ArkmeComposerScreenshotButton(props: {
   onFile: (file: File) => Promise<void>
   onError: (message: string) => void
 }) {
+  useArkmeLocale()
   const latest = useRef(props)
   latest.current = props
   const active = useRef<AbortController>()
@@ -99,7 +101,7 @@ export function ArkmeComposerScreenshotButton(props: {
   }
   const title = busy ? '正在截屏，按 Esc 取消' : !nativeDesktop ? browserScreenshotUnavailable() ?? '截屏（选择屏幕或窗口后裁剪）'
     : capability?.available === true ? '截屏（框选后添加到草稿，Esc 取消）' : capability?.reason ?? '正在检查截屏能力'
-  return <><ArkmeComposerToolButton aria-label="截屏" title={title} aria-busy={busy}
+  return <><ArkmeComposerToolButton aria-label={tr("截屏")} title={title} aria-busy={busy}
     disabled={props.active === false || props.disabled || busy || (nativeDesktop && capability === undefined)}
     onMouseDown={event => { event.preventDefault() }}
     onClick={() => { void capture() }}>

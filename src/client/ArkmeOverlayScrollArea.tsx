@@ -1,3 +1,4 @@
+import { tr } from './locale.js'
 import { forwardRef, useId, useImperativeHandle, useLayoutEffect, useRef, type HTMLAttributes } from 'react'
 
 export function overlayScrollbarGeometry(viewport: number, content: number, scrollTop: number) {
@@ -139,7 +140,7 @@ export const ArkmeOverlayScrollArea = forwardRef<HTMLDivElement, HTMLAttributes<
         <div ref={contentRef} role="none" style={{ display: 'flow-root', minWidth: 0 }}>{children}</div>
       </div>
       <div ref={thumbRef} hidden data-arkme-overlay-scroll-thumb role="scrollbar" tabIndex={0}
-        aria-label={`${props['aria-label'] ?? '列表'}滚动条`} aria-controls={viewportId}
+        aria-label={tr("{v0}滚动条", { v0: props['aria-label'] ?? '列表' })} aria-controls={viewportId}
         aria-orientation="vertical" aria-valuemin={0} aria-valuemax={0} aria-valuenow={0} />
     </div>
   },

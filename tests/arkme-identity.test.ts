@@ -148,6 +148,7 @@ function withoutMobileRecordingGuideProductCopy(file: string, content: string): 
   // The guide names the separate mobile app the user must open, not the Arkme desktop product.
   return content
     .replaceAll('>即我</span>', '></span>')
+    .replaceAll('tr("即我")', "''")
     .replaceAll('打开手机即我，登录同一账号', '')
 }
 
@@ -316,8 +317,14 @@ describe('Arkme plugin identity', () => {
         withoutOpenClawProtocolNames(file, withoutBotOwnerProtocolNames(file, source)),
       )))))
       // Engineering plans identify real repository owners, not product branding.
-      const productCopy = file.includes('/docs/plans/recording-')
+      let productCopy = file.includes('/docs/plans/recording-')
         ? content.replace(/jotmo-(audio|openapi|meta|intelligent)\b/g, '') : content
+      // Approved mobile parity uses Chinese lookup keys and official mobile
+      // branding/assets. English copy must still use the desktop product name.
+      if (/\/src\/client\/locales\/(en|dynamic-en)\.ts$/.test(file)) productCopy = productCopy.replace(/^.*\|/gm, '')
+      if (file.endsWith('/src/client/locales/mobile-en.ts')) productCopy = productCopy.replace(/^\/\/.*$/gm, '').replace(/"[^"\n]+"\s*:/g, '')
+      if (file.endsWith('/src/client/ArkmeAboutDetails.tsx')) productCopy = productCopy.replaceAll('jiwo-about-icon.png', 'product.png').replaceAll('jiwo-official-wechat.png', 'qr.png').replaceAll("tr('即我')", "''")
+      if (file.endsWith('/src/client/ArkmeDataManagementSettings.tsx') || file.endsWith('/docs/profile-data-navigation.md')) productCopy = productCopy.replaceAll('https://jiwo.cc/import', '').replaceAll('即我', '')
       return /jotmo|jiwo|即我/i.test(productCopy) ? [file.slice(root.length)] : []
     })
 

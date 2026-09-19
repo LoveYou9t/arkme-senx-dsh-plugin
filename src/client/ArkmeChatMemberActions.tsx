@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import { ArkmeActionMenu } from './ArkmeDshMenu.js'
 import { ArkmeRightPanelHeader } from './ArkmeRightPanelHeader.js'
 import {
@@ -237,7 +238,7 @@ export function ArkmeMemberActionMenu(props: {
   const countLabel = (label: string, count: number) => <span style={{ display: 'flex', gap: 16, justifyContent: 'space-between' }}>
     <span>{label}</span><span style={{ fontVariantNumeric: 'tabular-nums' }}>{props.member.statsKnown === false ? '' : count}</span>
   </span>
-  return <ArkmeActionMenu label={`${props.member.displayName} 的成员操作`}
+  return <ArkmeActionMenu label={tr("{v0} 的成员操作", { v0: props.member.displayName })}
     hoverAnchor={props.hoverAnchor} align={props.hoverSide === 'left' ? 'end' : 'start'}
     autoFocus={props.hoverAnchor === undefined}
     point={{ x: props.position.left, y: props.position.top }} onClose={props.onClose} actions={[
@@ -254,6 +255,7 @@ export function ArkmeGroupMemberRemoveDialog(props: {
   onClose: () => void
   onRemoved: (result: ArkmeGroupMemberRemoveResult) => void
 }) {
+  useArkmeLocale()
   const [preventRejoin, setPreventRejoin] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -269,12 +271,12 @@ export function ArkmeGroupMemberRemoveDialog(props: {
   }, [])
   return <ArkmeConfirmDialog
     titleId="arkme-member-remove-title"
-    title="移出群聊？"
-    description={`${props.member.displayName} 将无法继续查看或发送群消息。`}
+    title={tr("移出群聊？")}
+    description={tr("{v0} 将无法继续查看或发送群消息。", { v0: props.member.displayName })}
     error={error}
     busy={busy}
-    confirmLabel="确认移除"
-    busyLabel="移除中…"
+    confirmLabel={tr("确认移除")}
+    busyLabel={tr("移除中…")}
     confirmTone="danger"
     onClose={props.onClose}
     onConfirm={() => {
@@ -307,7 +309,7 @@ export function ArkmeGroupMemberRemoveDialog(props: {
         style={{ width: 16, height: 16, flex: 'none', margin: '3px 0 0', accentColor: arkmeTheme.info }}
         onChange={event => { setPreventRejoin(event.currentTarget.checked); setError('') }}
       />
-      <span><strong style={{ display: 'block', fontWeight: 600 }}>禁止再次加入此群</strong><span style={{ display: 'block', marginTop: 2, color: arkmeTheme.secondary }}>开启后，后续邀请、添加或入群审批都会被拒绝，可在群聊设置中解除。</span></span>
+      <span><strong style={{ display: 'block', fontWeight: 600 }}>{tr("禁止再次加入此群")}</strong><span style={{ display: 'block', marginTop: 2, color: arkmeTheme.secondary }}>{tr("开启后，后续邀请、添加或入群审批都会被拒绝，可在群聊设置中解除。")}</span></span>
     </label>
   </ArkmeConfirmDialog>
 }
@@ -344,6 +346,7 @@ export function ArkmeMemberProfileCard(props: {
   onClose: () => void
   onSend: () => void
 }) {
+  useArkmeLocale()
   const backdrop = useArkmeAvatarImage(props.member.avatarRef) ?? ''
   const [buttonState, setButtonState] = useState<'idle' | 'hover' | 'active'>('idle')
   useEffect(() => {
@@ -363,14 +366,14 @@ export function ArkmeMemberProfileCard(props: {
   return <div style={styles.cardScrim} role="presentation" onMouseDown={event => {
     if (event.target === event.currentTarget) props.onClose()
   }}>
-    <section style={styles.card} role="dialog" aria-modal="true" aria-label={`${names.displayName} 的用户卡片`}>
+    <section style={styles.card} role="dialog" aria-modal="true" aria-label={tr("{v0} 的用户卡片", { v0: names.displayName })}>
       {backdrop !== '' && <div aria-hidden style={{ ...styles.cardBackdrop, backgroundImage: `url(${JSON.stringify(backdrop).slice(1, -1)})` }} />}
       <div style={styles.cardContent}>
         <ArkmeUserAvatar {...(props.member.avatarRef === undefined ? {} : { avatarRef: props.member.avatarRef })}
           {...(props.member.avatarFallback === undefined ? {} : { fallback: props.member.avatarFallback })}
-          size={100} label={`${names.displayName} 的头像`} />
+          size={100} label={tr("{v0} 的头像", { v0: names.displayName })} />
         <h3 style={styles.cardName}>{names.displayName}</h3>
-        {names.topicNickname !== '' && <p style={styles.cardSecondaryName}>主题内昵称：{names.topicNickname}</p>}
+        {names.topicNickname !== '' && <p style={styles.cardSecondaryName}>{tr("主题内昵称：")}{names.topicNickname}</p>}
         <button data-arkme-feedback="neutral"
           type="button"
           style={{
@@ -389,7 +392,7 @@ export function ArkmeMemberProfileCard(props: {
           onPointerUp={() => { if (!props.busy) setButtonState('hover') }}
           onClick={props.onSend}
         >
-          {props.busy ? '正在打开…' : '发送消息'}
+          {props.busy ? tr("正在打开…") : tr("发送消息")}
         </button>
       </div>
     </section>
@@ -413,8 +416,8 @@ export function formatArkmeMemberRecordTime(timestamp: number, nowMillis = Date.
   const nowDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
   const dayDistance = Math.round((nowDay - valueDay) / 86_400_000)
   if (dayDistance === 0) return time
-  if (dayDistance === 1) return `昨天 ${time}`
-  if (dayDistance === 2) return `前天 ${time}`
+  if (dayDistance === 1) return tr("昨天 {v0}", { v0: time })
+  if (dayDistance === 2) return tr("前天 {v0}", { v0: time })
   if (value.getFullYear() === now.getFullYear()) return `${pad(value.getMonth() + 1)}-${pad(value.getDate())} ${time}`
   return `${String(value.getFullYear())}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} ${time}`
 }
@@ -456,6 +459,7 @@ export function ArkmeMemberRecordsPanel(props: {
   mode: ArkmeConversationMemberRecordMode
   onClose: () => void
 }) {
+  useArkmeLocale()
   const [items, setItems] = useState<ArkmeTimelineItem[]>([])
   const [cursor, setCursor] = useState<number>()
   const [hasMore, setHasMore] = useState(false)
@@ -593,8 +597,8 @@ export function ArkmeMemberRecordsPanel(props: {
   }, [cursor, error, hasMore, items.length, loading])
 
   const title = props.mode === 'mentioned'
-    ? (props.member.isSelf ? '@我的快记' : `@${props.member.displayName}的快记`)
-    : (props.member.isSelf ? '我的快记' : `${props.member.displayName}的快记`)
+    ? (props.member.isSelf ? '@我的快记' : tr("@{v0}的快记", { v0: props.member.displayName }))
+    : (props.member.isSelf ? '我的快记' : tr("{v0}的快记", { v0: props.member.displayName }))
   const total = props.member.statsKnown === false ? undefined : arkmeMemberRecordTotal(props.member, props.mode)
   const timeline = useMemo(() => arkmeMemberRecordTimeline(items), [items])
   const effectiveWidth = availableWidth === undefined
@@ -626,7 +630,7 @@ export function ArkmeMemberRecordsPanel(props: {
     <div ref={dismissRef} style={styles.drawerDismiss} data-arkme-member-records-dismiss="true" onPointerDown={props.onClose} />
     <div
       role="separator"
-      aria-label="调整成员快记侧栏宽度"
+      aria-label={tr("调整成员快记侧栏宽度")}
       aria-orientation="vertical"
       aria-valuenow={Math.round(effectiveWidth)}
       tabIndex={0}
@@ -670,7 +674,7 @@ export function ArkmeMemberRecordsPanel(props: {
       data-arkme-member-records-panel="true" data-mode={props.mode} data-total={total}
       data-width={Math.round(effectiveWidth)} data-resizing={resizing ? 'true' : 'false'}>
     <ArkmeRightPanelHeader title={title} subtitle={total === undefined ? undefined : String(total) + '条'}
-      onClose={props.onClose} closeLabel="关闭成员快记" />
+      onClose={props.onClose} closeLabel={tr("关闭成员快记")} />
     <div ref={bodyRef} style={styles.drawerBody} onScroll={event => {
       if (shouldLoadOlderArkmeMemberRecords(
         event.currentTarget.scrollTop,
@@ -681,19 +685,15 @@ export function ArkmeMemberRecordsPanel(props: {
         load(cursor)
       }
     }}>
-      {loading && items.length === 0 && <div style={styles.state}>正在加载快记…</div>}
+      {loading && items.length === 0 && <div style={styles.state}>{tr("正在加载快记…")}</div>}
       {error !== '' && items.length === 0 && <div style={styles.state} role="alert">
-        <div>{error}</div><button data-arkme-feedback="neutral" type="button" style={styles.retry} onClick={() => { load() }}>重试</button>
+        <div>{error}</div><button data-arkme-feedback="neutral" type="button" style={styles.retry} onClick={() => { load() }}>{tr("重试")}</button>
       </div>}
-      {!loading && error === '' && items.length === 0 && <div style={styles.state}>暂无快记</div>}
-      {loading && items.length > 0 && <div style={styles.loadMoreState} role="status" aria-live="polite">
-        正在加载快记…
-      </div>}
+      {!loading && error === '' && items.length === 0 && <div style={styles.state}>{tr("暂无快记")}</div>}
+      {loading && items.length > 0 && <div style={styles.loadMoreState} role="status" aria-live="polite">{tr("正在加载快记…")}</div>}
       {error !== '' && items.length > 0 && <div style={styles.loadMoreState} role="alert" title={error}>
-        <span>加载快记失败</span>
-        <button data-arkme-feedback="neutral" type="button" style={styles.loadMoreRetry} onClick={() => { load(lastLoadRef.current.beforeSequence, lastLoadRef.current.refresh) }}>
-          重试
-        </button>
+        <span>{tr("加载快记失败")}</span>
+        <button data-arkme-feedback="neutral" type="button" style={styles.loadMoreRetry} onClick={() => { load(lastLoadRef.current.beforeSequence, lastLoadRef.current.refresh) }}>{tr("重试")}</button>
       </div>}
       {timeline.map(entry => entry.kind === 'time'
         ? <div key={entry.key} style={styles.recordTime} data-arkme-record-time={entry.timestamp}>{entry.label}</div>
@@ -706,7 +706,7 @@ export function ArkmeMemberRecordsPanel(props: {
             {!entry.item.isMe && <ArkmeUserAvatar
               {...(entry.item.avatarRef === undefined ? {} : { avatarRef: entry.item.avatarRef })}
               size={36}
-              label={`${entry.item.senderName} 的头像`}
+              label={tr("{v0} 的头像", { v0: entry.item.senderName })}
             />}
             <div style={{ ...styles.recordMain, alignItems: entry.item.isMe ? 'flex-end' : 'flex-start' }}>
               <div style={styles.recordName}>{entry.item.senderName}</div>
@@ -718,7 +718,7 @@ export function ArkmeMemberRecordsPanel(props: {
             {entry.item.isMe && <ArkmeUserAvatar
               {...(entry.item.avatarRef === undefined ? {} : { avatarRef: entry.item.avatarRef })}
               size={36}
-              label={`${entry.item.senderName} 的头像`}
+              label={tr("{v0} 的头像", { v0: entry.item.senderName })}
             />}
           </article>
         </Fragment>)}

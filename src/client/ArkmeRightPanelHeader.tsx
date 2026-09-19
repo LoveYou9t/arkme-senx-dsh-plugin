@@ -1,3 +1,4 @@
+import { tr } from './locale.js'
 import type { CSSProperties, ReactNode, Ref } from 'react'
 import { ArrowLeft } from '@phosphor-icons/react/dist/icons/ArrowLeft'
 import { X } from '@phosphor-icons/react/dist/icons/X'
@@ -43,6 +44,6 @@ export function ArkmeRightPanelHeader({ title, titleId, heading, subtitle, actio
     </div>
     {actions !== undefined && <div style={styles.actions}>{actions}</div>}
     <button data-arkme-feedback="neutral" ref={closeRef} type="button" className="arkme-right-panel-header-button" style={styles.button}
-      aria-label={closeLabel} title="关闭" disabled={closeDisabled} onClick={onClose}><X size={18} aria-hidden /></button>
+      aria-label={closeLabel} title={tr("关闭")} disabled={closeDisabled} onClick={onClose}><X size={18} aria-hidden /></button>
   </header>
 }

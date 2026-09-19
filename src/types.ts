@@ -485,6 +485,10 @@ export interface ArkmeCalendarRecordCursor {
 }
 
 export interface ArkmeCalendarRecordItem extends ArkmeCalendarAnchor {
+  /** Device-captured observation, never a shared place or an inferred stay. */
+  locationObservation?: ArkmeRecordLocationObservation
+  /** Short-lived, account-bound capability for an explicit location detail read. */
+  locationRef?: string
   /** Viewer-authorized source presentation shared with conversation navigation. */
   source?: ArkmeSourceItem
   /** Authorized rich projection shared by calendar UI, SDK and Tools; no storage URLs. */
@@ -1210,6 +1214,8 @@ export interface ArkmeCallVideoPerspective {
 }
 
 export interface ArkmeCallDetail {
+  /** Stable occurrence identity; callRef is renewable and must not be used for equality. */
+  stableId?: string
   callRef: string
   title: string
   mediaType: ArkmeCallMediaType
@@ -1383,9 +1389,13 @@ export interface ArkmeUserProfile {
     apple: boolean
     wechat: boolean
     google: boolean
+    /** Older profile responses do not report Huawei binding state. */
+    huawei?: boolean
   }
   bindingNames?: {
     wechat?: string
+    apple?: string
+    google?: string
   }
   contact: {
     phoneMasked?: string
@@ -1397,6 +1407,17 @@ export interface ArkmeUserProfileSnapshot {
   profile: ArkmeUserProfile | null
   cachedAtMillis: number
   revision: number
+}
+
+/** Only one field may be changed per explicit profile action. */
+export type ArkmeProfileUpdate = { field: 'nickname' | 'avatar'; value: string; expectedAccountScope: string }
+
+export interface ArkmeInvitationRewards {
+  accountScope: string
+  code: string
+  invitedCount: number
+  alreadyClaimed: boolean
+  registrationExpired: boolean
 }
 
 export type ArkmeUserBanStatus = 'banned' | 'unbanned'
@@ -1653,6 +1674,23 @@ export interface ArkmeRecordLocationCapture {
   capturedAtMillis: number
 }
 
+/** Historical read model: missing capture time must remain unknown. */
+export interface ArkmeRecordLocationObservation {
+  source: 'device'
+  latitude: number
+  longitude: number
+  label?: string
+  capturedAtMillis?: number
+  deviceLabel?: string
+  accuracyMeters?: number
+}
+
+export interface ArkmeCalendarRecordLocation {
+  recordUid: string
+  access: 'available' | 'restricted'
+  location?: ArkmeRecordLocationObservation
+}
+
 /** Browser-safe playback projection for every segment of one background recording. */
 export interface ArkmeMessageSnapshotBackgroundSoundPlayback {
   mediaRefs: string[]
@@ -1700,6 +1738,7 @@ export interface ArkmeTimelineItem {
   hasManualEdit?: boolean | undefined
   /** Display-only call status; room, participant and call identifiers stay host-side. */
   callRecord?: {
+    stableId?: string
     mediaType: 'audio' | 'video'
     text: string
     /** Account-bound encrypted reference accepted by calls.history.detail. */
@@ -3537,6 +3576,15 @@ export type ArkmePluginOperation =
   | 'billing.products'
   | 'membership.current'
   | 'membership.catalog'
+  | 'account.usage.tokens'
+  | 'account.usage.storage'
+  | 'account.usage.voice'
+  | 'account.usage.token.summary'
+  | 'account.usage.token.operations'
+  | 'account.usage.token.calls'
+  | 'data.deleted'
+  | 'data.export.preflight'
+  | 'data.recover'
   | 'billing.order.create'
   | 'billing.order.status'
   | 'contacts.search'
@@ -3555,6 +3603,7 @@ export type ArkmePluginOperation =
   | 'bots.private-chat.directory'
   | 'bots.private-chat.open'
   | 'bots.private-chat.refresh'
+  | 'bots.private-chat.history.read'
   | 'bots.private-chat.send'
   | 'bots.private-chat.mark-read'
   | 'records.summary'
@@ -3572,8 +3621,12 @@ export type ArkmePluginOperation =
   | 'calendar.buckets'
   | 'calendar.chat-statistics'
   | 'calendar.records'
+  | 'calendar.day-recap'
+  | 'calendar.record-location'
   | 'user.profile'
   | 'user.profile.refresh'
+  | 'user.profile.update'
+  | 'account.invitation.get'
   | 'settings.background-sound.get'
   | 'settings.background-sound.update'
   | 'user.arkme-id.check'

@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from '../../locale.js'
 import { useEffect, useRef, type ReactNode } from 'react'
 import type { ContactDirectorySectionState } from './contact-directory-state.js'
 
@@ -24,6 +25,7 @@ export function CollapsibleDirectorySection({
   onRetry,
   onLoadMore,
 }: CollapsibleDirectorySectionProps) {
+  useArkmeLocale()
   const contentId = `arkme-directory-section-${section.section}`
   const hasItems = section.items.length > 0
   const sectionRef = useRef<HTMLElement>(null)
@@ -82,16 +84,16 @@ export function CollapsibleDirectorySection({
     <div id={contentId} className="arkme-contact-directory-section-body" hidden={!section.expanded}>
       {section.expanded && hasItems && children}
       {section.expanded && section.status === 'loading' && <div role="status" className="arkme-contact-directory-status">
-        {hasItems && section.loadingMode === 'replace' ? '正在更新…' : '正在加载…'}
+        {hasItems && section.loadingMode === 'replace' ? tr("正在更新…") : tr("正在加载…")}
       </div>}
       {section.expanded && section.status === 'empty' && <div className="arkme-contact-directory-empty">{emptyLabel}</div>}
       {section.expanded && section.status === 'error' && <div className="arkme-contact-directory-warning" role="alert">
-        <span>{section.warning ?? '加载失败'}</span>
-        <button type="button" onClick={onRetry}>刷新</button>
+        <span>{section.warning ?? tr("加载失败")}</span>
+        <button type="button" onClick={onRetry}>{tr("刷新")}</button>
       </div>}
       {section.expanded && section.status !== 'error' && section.status !== 'loading' && section.warning !== undefined
         && <div className="arkme-contact-directory-warning" role="status">
-          <span>{section.warning}</span><button type="button" onClick={onRetry}>刷新</button>
+          <span>{section.warning}</span><button type="button" onClick={onRetry}>{tr("刷新")}</button>
         </div>}
       {section.expanded && section.hasMore && <div ref={sentinelRef} data-directory-page-sentinel={section.section} aria-hidden style={{ height: 1 }} />}
     </div>

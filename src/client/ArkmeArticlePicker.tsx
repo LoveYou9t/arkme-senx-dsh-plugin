@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale, arkmeIntlLocale } from './locale.js'
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { ArkmeLongArticleDetail, ArkmeRecordSearchResult, ArkmeSearchRecordItem } from '../types.js'
 import { arkmeMarkdownPlainText } from '../markdown.js'
@@ -30,6 +31,7 @@ export function isOwnArticle(item: ArkmeSearchRecordItem, userId: number): boole
 export function ArkmeArticlePicker({ sourceRef, userId, onClose, onSelect }: {
   sourceRef: string; userId: number; onClose: () => void; onSelect: (article: ComposerArticle) => void
 }) {
+  useArkmeLocale()
   const [query, setQuery] = useState('')
   const [page, setPage] = useState<ArkmeRecordSearchResult>()
   const [selected, setSelected] = useState('')
@@ -106,7 +108,7 @@ export function ArkmeArticlePicker({ sourceRef, userId, onClose, onSelect }: {
   const close = () => { detailController.current?.abort(); onClose() }
   return <>
     <div style={styles.overlay} onMouseDown={event => { if (event.target === event.currentTarget) close() }}>
-      <div ref={root} role="dialog" aria-modal="true" aria-label="添加长文" style={styles.dialog} onKeyDown={event => {
+      <div ref={root} role="dialog" aria-modal="true" aria-label={tr("添加长文")} style={styles.dialog} onKeyDown={event => {
         if (creating || preview) return
         if (event.key === 'Escape') { event.stopPropagation(); close() }
         if (event.key === 'Tab') {
@@ -116,28 +118,28 @@ export function ArkmeArticlePicker({ sourceRef, userId, onClose, onSelect }: {
           if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus() }
         }
       }}>
-        <header style={styles.header}><h2 style={{ margin: 0, flex: 1, fontSize: 19 }}>添加长文</h2>
-          <button type="button" style={styles.button} disabled={opening} onClick={() => setCreating(true)}>＋新建长文</button>
-          <button type="button" style={styles.button} aria-label="关闭添加长文" onClick={close}>×</button></header>
-        <input ref={search} style={styles.search} value={query} aria-label="搜索自己的长文" placeholder="搜索自己的长文" onChange={event => setQuery(event.target.value)} />
+        <header style={styles.header}><h2 style={{ margin: 0, flex: 1, fontSize: 19 }}>{tr("添加长文")}</h2>
+          <button type="button" style={styles.button} disabled={opening} onClick={() => setCreating(true)}>{tr("＋新建长文")}</button>
+          <button type="button" style={styles.button} aria-label={tr("关闭添加长文")} onClick={close}>×</button></header>
+        <input ref={search} style={styles.search} value={query} aria-label={tr("搜索自己的长文")} placeholder={tr("搜索自己的长文")} onChange={event => setQuery(event.target.value)} />
         <div style={styles.list}>
           {page?.items.map(item => <div key={item.recordUid} data-arkme-article-choice={item.recordUid} style={{ ...styles.row, background: selected === item.recordUid ? theme.accentSoft : theme.base }}>
             <button type="button" style={styles.select} role="radio" aria-checked={selected === item.recordUid} aria-label={item.title || '无标题长文'} disabled={opening} onClick={() => setSelected(item.recordUid)}>
               <span aria-hidden="true" style={{ color: selected === item.recordUid ? theme.accent : theme.secondary }}>{selected === item.recordUid ? '◉' : '○'}</span>
               <span style={{ minWidth: 0, flex: 1 }}><span style={styles.title}>{item.title || '无标题长文'}</span>
                 <span style={styles.summary}>{arkmeMarkdownPlainText(item.snippet || item.textContent)}</span>
-                <span style={styles.meta}>{item.sendAtMillis > 0 ? new Date(item.sendAtMillis).toLocaleDateString('zh-CN') : ''}</span></span>
+                <span style={styles.meta}>{item.sendAtMillis > 0 ? new Date(item.sendAtMillis).toLocaleDateString(arkmeIntlLocale()) : ''}</span></span>
             </button>
-            <button type="button" style={styles.button} aria-label={`预览${item.title || '长文'}`} disabled={opening} onClick={() => { void resolveArticle(item.recordUid, false) }}>预览</button>
+            <button type="button" style={styles.button} aria-label={tr("预览{v0}", { v0: item.title || tr("长文") })} disabled={opening} onClick={() => { void resolveArticle(item.recordUid, false) }}>{tr("预览")}</button>
           </div>)}
           {!loading && !error && page?.items.length === 0 && <div style={styles.state}>{page.hasMore ? '本页暂无自己的长文，可继续加载' : query.trim() ? '没有找到匹配的长文' : '还没有自己的长文，点击上方新建'}</div>}
-          <div style={styles.state}>{loading ? <span role="status">正在加载…</span> : error ? <span role="alert">{error}<button style={styles.button} onClick={() => { void load(page?.hasMore ? page.nextCursor : undefined) }}>重试</button></span>
-            : page?.hasMore && <button style={styles.button} onClick={() => { void load(page.nextCursor) }}>加载更多</button>}</div>
+          <div style={styles.state}>{loading ? <span role="status">{tr("正在加载…")}</span> : error ? <span role="alert">{error}<button style={styles.button} onClick={() => { void load(page?.hasMore ? page.nextCursor : undefined) }}>{tr("重试")}</button></span>
+            : page?.hasMore && <button style={styles.button} onClick={() => { void load(page.nextCursor) }}>{tr("加载更多")}</button>}</div>
         </div>
         {openError && <p role="alert" style={{ color: theme.danger, margin: '0 24px 12px' }}>{openError}</p>}
-        <footer style={styles.footer}><span style={{ ...styles.meta, flex: 1 }}>只添加到输入框，不会立即发送</span>
-          <button style={styles.button} onClick={close}>取消</button>
-          <button style={{ ...styles.button, background: theme.primaryAction, color: theme.onPrimaryAction, opacity: !selected || opening ? .5 : 1 }} disabled={!selected || opening} onClick={() => { void resolveArticle(selected, true) }}>{opening ? '正在读取…' : '添加所选'}</button></footer>
+        <footer style={styles.footer}><span style={{ ...styles.meta, flex: 1 }}>{tr("只添加到输入框，不会立即发送")}</span>
+          <button style={styles.button} onClick={close}>{tr("取消")}</button>
+          <button style={{ ...styles.button, background: theme.primaryAction, color: theme.onPrimaryAction, opacity: !selected || opening ? .5 : 1 }} disabled={!selected || opening} onClick={() => { void resolveArticle(selected, true) }}>{opening ? tr("正在读取…") : '添加所选'}</button></footer>
       </div>
     </div>
     {creating && <ArkmeLongArticleDialog sourceRef={sourceRef} overlayZIndex={1201} onClose={() => setCreating(false)} onPrepared={draft => {

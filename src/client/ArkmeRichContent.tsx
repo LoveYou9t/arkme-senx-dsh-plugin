@@ -1,3 +1,4 @@
+import { tr, useArkmeLocale } from './locale.js'
 import { useArkmeLivePhotoPlayback } from './live-photo-playback.js'
 import { ArkmeLivePhotoBadge } from './ArkmeLivePhotoBadge.js'
 import { arkmeMarkdownPlainText } from '../markdown.js'
@@ -294,6 +295,7 @@ function LongText({
   onMentionClick?: ArkmeMentionClickHandler
   isMentionClickable?: ArkmeMentionClickPredicate
 }) {
+  useArkmeLocale()
   const markdown = textFormat === 'markdown'
   const markdownBody = useRef<HTMLDivElement>(null)
   const [markdownOverflow, setMarkdownOverflow] = useState(false)
@@ -334,7 +336,7 @@ function LongText({
     {collapsible && <button type="button" style={styles.collapseToggle} aria-expanded={!collapsed} onClick={event => {
       preserveTextTogglePosition(event.currentTarget, () => { setCollapsed(value => !value) })
     }}>
-      {collapsed ? '展开' : '收起'}
+      {collapsed ? tr("展开") : tr("收起")}
     </button>}
   </div>
 }
@@ -365,7 +367,7 @@ function VisualMediaFallback({ block, failure, onRetry, onOpenAsFile, style }: {
           ? <path d="m11.5 9.5 7 4.5-7 4.5v-9Z" fill="currentColor" />
           : <><circle cx="10" cy="10" r="2" fill="currentColor" /><path d="m6.5 20 5.5-5 3.5 3 2.5-2 3.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></>}
       </svg>
-      <span>{unsupported ? `接收${label}` : `${label}加载失败，点击重试`}</span>
+      <span>{unsupported ? tr("接收{v0}", { v0: label }) : `${label}加载失败，点击重试`}</span>
     </span>
     {video && <span style={styles.videoBadge} aria-hidden>▶ {durationLabel(block.durationSec)}</span>}
   </button>
@@ -396,7 +398,7 @@ function MediaGallery({ blocks, failures, retryVersions, onOpen, onFailure, onRe
         key={`${block.mediaRef}:${String(block.sortOrder)}`}
         type="button"
         style={styles.mediaTile}
-        aria-label={block.kind === 'video' ? `播放视频 ${block.fileName}` : `预览图片 ${block.fileName}`}
+        aria-label={block.kind === 'video' ? `播放视频 ${block.fileName}` : tr("预览图片 {v0}", { v0: block.fileName })}
         onClick={() => { onOpen(block) }}
       >
         {block.kind === 'image'
@@ -405,7 +407,7 @@ function MediaGallery({ blocks, failures, retryVersions, onOpen, onFailure, onRe
             <video src={src} muted playsInline preload="metadata" style={styles.videoPreview} aria-hidden onError={event => { onFailure(block, event.currentTarget.error?.code === 4 || !arkmeCanInlineLocalFile(block.mimeType, block.fileName) ? 'unsupported' : 'retryable') }} />
             <span style={styles.videoBadge} aria-hidden>▶ {durationLabel(block.durationSec)}</span>
           </>}
-        {block.kind === 'image' && block.dynamicPhoto !== undefined && <span style={{ position: 'absolute', display: 'flex', left: 6, bottom: 6, pointerEvents: 'none' }} aria-label="实况照片">
+        {block.kind === 'image' && block.dynamicPhoto !== undefined && <span style={{ position: 'absolute', display: 'flex', left: 6, bottom: 6, pointerEvents: 'none' }} aria-label={tr("实况照片")}>
           <ArkmeLivePhotoBadge variant="thumbnail" />
         </span>}
         <UploadProgress block={block} />
@@ -415,6 +417,7 @@ function MediaGallery({ blocks, failures, retryVersions, onOpen, onFailure, onRe
 }
 
 export function ArkmeFileCard({ block, fallback = false, onOpen, previewOpen = false }: { block: ArkmeContentBlock; fallback?: boolean; onOpen?: (block: ArkmeContentBlock) => void; previewOpen?: boolean }) {
+  useArkmeLocale()
   const [open, setOpen] = useState(false)
   const [opening, setOpening] = useState(false)
   const controller = useRef<AbortController>()
@@ -455,6 +458,7 @@ function LongArticleWordCountIcon() {
 }
 
 export function ArkmeForwardArticleContent({ item }: { item: ArkmeTimelineItem }) {
+  useArkmeLocale()
   const [open, setOpen] = useState(false)
   return <>
     <div style={{ maxWidth: '100%', minWidth: 0, padding: '10px 13px', overflow: 'hidden', overflowWrap: 'anywhere', wordBreak: 'break-word', boxSizing: 'border-box', borderRadius: '16px 5px 16px 16px', background: arkmeTheme.messageOwn, border: '1px solid rgba(83,97,145,.045)' }}>
@@ -473,7 +477,7 @@ function ArticleCard({ title, text, onOpen }: { title: string; text: string; onO
       <h3 style={styles.articleTitle}><ArkmeRichText text={heading} presentation="preview" /></h3>
     </div>
     {hasTitle && text.trim() !== '' && <p style={{ ...styles.articlePreview, WebkitLineClamp: 2 }}><ArkmeRichText text={text} presentation="preview" /></p>}
-    <span style={styles.articleMeta}><LongArticleWordCountIcon />{String(count)}字</span>
+    <span style={styles.articleMeta}><LongArticleWordCountIcon />{String(count)}{tr("字")}</span>
   </button>
 }
 
@@ -558,6 +562,7 @@ export function ArkmeMediaPreview({ blocks, selected, onSelect, onClose, preview
   openLocalFile?: boolean
   forceDownload?: boolean
 }) {
+  useArkmeLocale()
   const index = Math.max(0, blocks.findIndex(block => block.mediaRef === selected.mediaRef))
   const dialogRef = useRef<HTMLDivElement>(null)
   const filePreview = selected.kind === 'file' || forceDownload
@@ -778,7 +783,7 @@ export function ArkmeMediaPreview({ blocks, selected, onSelect, onClose, preview
         [data-arkme-media-preview-actions] button:not(:disabled):hover { box-shadow: inset 0 0 0 30px rgba(255,255,255,.14); }
         [data-arkme-media-preview-actions] button:not(:disabled):active { box-shadow: inset 0 0 0 30px rgba(255,255,255,.20); }
       `}</style>
-      <button type="button" style={styles.previewClose} data-arkme-preview-close aria-label="关闭预览" title="关闭预览" onClick={onClose}>
+      <button type="button" style={styles.previewClose} data-arkme-preview-close aria-label={tr("关闭预览")} title={tr("关闭预览")} onClick={onClose}>
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
           <path d="M1.0804 2.81662C0.59579 2.33201 0.595791 1.5463 1.0804 1.06169C1.56501 0.577077 2.35072 0.577077 2.83533 1.06169L8.14213 6.36849L13.4489 1.06169C13.9335 0.577075 14.7193 0.577076 15.2039 1.06169C15.6885 1.5463 15.6885 2.33201 15.2039 2.81662L9.89707 8.12342L15.2225 13.4489C15.7071 13.9335 15.7071 14.7192 15.2225 15.2038C14.7379 15.6884 13.9522 15.6884 13.4676 15.2038L8.14213 9.87835L2.81666 15.2038C2.33205 15.6884 1.54634 15.6884 1.06173 15.2038C0.577121 14.7192 0.577121 13.9335 1.06173 13.4489L6.3872 8.12342L1.0804 2.81662Z" />
         </svg>
@@ -825,9 +830,9 @@ export function ArkmeMediaPreview({ blocks, selected, onSelect, onClose, preview
       </div>
       {livePhoto.video !== null && <div style={styles.previewStage}>{livePhoto.video}</div>}
       <div style={styles.previewActions} data-arkme-media-preview-actions="bottom">
-        <ArkmeFileActionNavButton label="上一个媒体" direction="left" disabled={previousDisabled} onClick={() => { if (!previousDisabled) { if (navigation) navigation.previous?.(); else selectMedia(blocks[index - 1]!) } }} />
+        <ArkmeFileActionNavButton label={tr("上一个媒体")} direction="left" disabled={previousDisabled} onClick={() => { if (!previousDisabled) { if (navigation) navigation.previous?.(); else selectMedia(blocks[index - 1]!) } }} />
         <span aria-hidden style={styles.previewActionWideGap} />
-        <ArkmeFileActionNavButton label="下一个媒体" direction="right" disabled={nextDisabled} onClick={() => { if (!nextDisabled) { if (navigation) navigation.next?.(); else selectMedia(blocks[index + 1]!) } }} />
+        <ArkmeFileActionNavButton label={tr("下一个媒体")} direction="right" disabled={nextDisabled} onClick={() => { if (!nextDisabled) { if (navigation) navigation.next?.(); else selectMedia(blocks[index + 1]!) } }} />
         <span aria-hidden style={styles.previewActionWideGap} />
         <ArkmeFileActions block={selected} original={original} copySourceUrl={previewUrl ?? (selected.mediaRef === selected.localFileRef ? undefined : `${mediaRoute}?ref=${encodeURIComponent(selected.mediaRef)}`)} onImageCopyNotice={showActionNotice} showDownloadStatus={false} hideDownloadAfterSave={false} style={styles.previewActionPair} />
       </div>
@@ -941,6 +946,7 @@ export function ArkmeMessageContent({ item, sourceRef, sourceIdentityKey, onLong
   onCallDetailOpen?: (videoUrl?: string) => void
   onArticleOpen?: () => void
 }) {
+  useArkmeLocale()
   const readMentionMembers = useReadMentionMembers(item.itemUid, sourceRef)
   // Access references rotate on new messages; only a different conversation ends this media scope.
   const mediaSourceKey = sourceIdentityKey ?? sourceRef
@@ -1091,7 +1097,7 @@ export function ArkmeMessageContent({ item, sourceRef, sourceIdentityKey, onLong
         </>}
         {!(isArticle && bodyTextFormat === 'markdown') && renderRows}
       </>}
-      {item.mediaUnavailable === true && (blocks.length > 0 || text !== '') && <p style={{ ...styles.text, color: arkmeTheme.tertiary, fontSize: 12 }}>部分媒体暂时无法加载，请刷新对话后重试</p>}
+      {item.mediaUnavailable === true && (blocks.length > 0 || text !== '') && <p style={{ ...styles.text, color: arkmeTheme.tertiary, fontSize: 12 }}>{tr("部分媒体暂时无法加载，请刷新对话后重试")}</p>}
       {!isArticle && blocks.length === 0 && text === '' && <p style={styles.text}>
         {item.mediaUnavailable === true ? '媒体暂时无法加载' : '暂不支持的非文本内容'}
       </p>}
@@ -1138,6 +1144,7 @@ export function ArkmeAttachmentDraftTile({ asset, previewUrl, onRemove, onOpen, 
   onOpen?: () => void
   disabled?: boolean
 }) {
+  useArkmeLocale()
   const [failedPreviewUrl, setFailedPreviewUrl] = useState<string>()
   const visualPreview = previewUrl !== undefined && failedPreviewUrl !== previewUrl && (asset.fileKind === 1 || asset.fileKind === 3)
   const imagePreviewFailed = asset.fileKind === 1 && previewUrl !== undefined && failedPreviewUrl === previewUrl
@@ -1152,7 +1159,7 @@ export function ArkmeAttachmentDraftTile({ asset, previewUrl, onRemove, onOpen, 
       : visualPreview && asset.fileKind === 3
         ? <><video src={previewUrl} muted playsInline preload="metadata" aria-label={asset.fileName} onError={() => { setFailedPreviewUrl(previewUrl) }} style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover', background: '#111' }} /><span aria-hidden style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: '#fff', fontSize: 16, textShadow: '0 1px 4px rgba(0,0,0,.55)' }}>▶</span></>
       : imagePreviewFailed
-        ? <span role="status" aria-label={`${asset.fileName} 图片预览失败`} style={{ maxWidth: 42, color: 'var(--dsw-alias-label-tertiary, #7f8792)', fontSize: 9, lineHeight: '12px', textAlign: 'center' }}>图片预览失败</span>
+        ? <span role="status" aria-label={`${asset.fileName} 图片预览失败`} style={{ maxWidth: 42, color: 'var(--dsw-alias-label-tertiary, #7f8792)', fontSize: 9, lineHeight: '12px', textAlign: 'center' }}>{tr("图片预览失败")}</span>
         : <ArkmeFileIcon fileName={asset.fileName} {...(asset.mimeType === undefined ? {} : { mimeType: asset.mimeType })} size={32} />}</button>
     <button
       type="button"
