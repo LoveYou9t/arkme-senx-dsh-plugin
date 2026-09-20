@@ -7766,7 +7766,7 @@ export function ArkmeSurface({
             onPrivateChatOpened={activateSource}
           />
           : ui.mode === 'voiceprint' ? <ArkmeVoiceprintSurface onBack={() => { arkmeUi.showRecordings() }} />
-          : ui.mode === 'arko' ? <ArkmeArkoSurface key={arkmeArkoSurfaceKey(auth)} />
+          : ui.mode === 'arko' ? <ArkmeArkoSurface native key={arkmeArkoSurfaceKey(auth)} />
           : botConversationVisible && ui.selectedBot !== undefined ? <ArkmeBotConversationSurface
             key={ui.selectedBot.botRef} bot={ui.selectedBot} onConversationActivity={bot => { arkmeUi.openBotConversation(bot) }} onDeleted={() => { arkmeUi.showHarness() }}
           />
