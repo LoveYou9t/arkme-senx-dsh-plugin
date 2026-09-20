@@ -3566,6 +3566,7 @@ export type ArkmePluginOperation =
   | 'auth.test.login'
   | 'auth.phone.send'
   | 'auth.phone.verify'
+  | 'auth.phone.unbind.check'
   | 'auth.phone.unbind.send'
   | 'auth.phone.unbind'
   | 'auth.logout'

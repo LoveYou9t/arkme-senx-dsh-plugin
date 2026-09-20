@@ -853,7 +853,8 @@ TA 公开分享的内容|Publicly shared content
 解绑手机号|Disconnect phone number
 返回更换手机号|Back to changing phone number
 确认解绑|Confirm disconnect
-解绑后无法使用此手机号登录，仍需按现有规则绑定手机号后使用。|After disconnecting, this phone number cannot be used to sign in. A phone number is still required to use the app.
+当前仅绑定了手机号，请先绑定其他登录方式|Link another sign-in method before unlinking your phone number.
+账号状态未确认，请重新打开账号设置|Account status could not be confirmed. Reopen account settings.
 绑定中…|Connecting…
 通用|General
 隐私与权限|Privacy & permissions

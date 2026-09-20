@@ -202,6 +202,35 @@ describe('phone unbind', () => {
     const service = new AuthService(runtime, profile, { reconnectChatRealtime() {}, clearAccountState() {} })
     return { service, runtime, profile }
   }
+  it.each([true, false])('reads backend eligibility %s without sending SMS or mutating the account', async allowed => {
+    const { service, runtime } = setup(2)
+    vi.mocked(runtime.authenticatedAuthGet).mockResolvedValue({ user_id: 42, can_unbind_phone: allowed })
+    await expect(service.checkPhoneUnbindEligibility(42)).resolves.toEqual({ allowed })
+    expect(runtime.authenticatedAuthGet).toHaveBeenCalledWith(
+      '/api/v1/auth/get-user-info?include_phone_unbind_eligibility=true', session, undefined,
+      { lane: 'auth', bypassCache: true },
+    )
+    expect(runtime.post).not.toHaveBeenCalled()
+  })
+  it.each([{ user_id: 42 }, { user_id: 43, can_unbind_phone: true }, { user_id: 42, can_unbind_phone: 'true' }])('rejects ambiguous eligibility %j', async data => {
+    const { service, runtime } = setup(2)
+    vi.mocked(runtime.authenticatedAuthGet).mockResolvedValue(data)
+    await expect(service.checkPhoneUnbindEligibility(42)).rejects.toMatchObject({ code: 'phone-unbind-eligibility-unknown' })
+    expect(runtime.post).not.toHaveBeenCalled()
+  })
+  it('rejects an entry from another account before checking eligibility', async () => {
+    const { service, runtime } = setup(2)
+    await expect(service.checkPhoneUnbindEligibility(43)).rejects.toMatchObject({ code: 'phone-unbind-session-changed' })
+    expect(runtime.authenticatedAuthGet).not.toHaveBeenCalled()
+  })
+  it('rejects eligibility returned after the session changed', async () => {
+    const { service, runtime } = setup(2)
+    vi.mocked(runtime.authenticatedAuthGet).mockImplementation(async () => {
+      vi.mocked(runtime.requireSession).mockResolvedValue({ ...session, refreshToken: 'other-session' })
+      return { user_id: 42, can_unbind_phone: true }
+    })
+    await expect(service.checkPhoneUnbindEligibility(42)).rejects.toMatchObject({ code: 'phone-unbind-eligibility-unknown' })
+  })
   it('sends captcha only and never accepts a client supplied phone target', async () => {
     const { service, runtime } = setup(2)
     await expect(service.sendPhoneUnbindCode(captcha)).resolves.toEqual({ sent: true })

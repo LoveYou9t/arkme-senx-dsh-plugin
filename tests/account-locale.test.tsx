@@ -22,6 +22,7 @@ afterEach(() => { act(() => { active = 'zh'; callback() }); cleanup() })
 const switchEnglish = () => act(() => { active = 'en'; callback() })
 describe('account UI language and editing', () => {
   it('keeps the unbind dialog and verification input when language switches', async () => {
+    mock.call.mockResolvedValue({ allowed: true })
     const host = document.createElement('div'); document.body.append(host); const root = createRoot(host)
     await act(async () => root.render(<PhoneBindDialog config={undefined} profile={{ ...profile, contact: { phoneMasked: '138****0000' } }} onClose={() => {}} onUpdated={() => {}} />))
     await act(async () => [...host.querySelectorAll('button')].find(b => b.textContent === '解绑手机号')!.click())
@@ -33,7 +34,9 @@ describe('account UI language and editing', () => {
     expect(host.textContent).toContain('Confirm disconnect')
     expect(host.textContent).toContain('138****0000')
     expect(host.querySelector('button[type="submit"]')?.getAttribute('data-arkme-feedback')).toBe('primary')
-    expect(mock.call).not.toHaveBeenCalled()
+    expect(mock.call).toHaveBeenCalledTimes(1)
+    expect(mock.call).toHaveBeenCalledWith('auth.phone.unbind.check', { expectedUserId: 42 })
+    expect(host.textContent).not.toContain('A phone number is still required')
     await act(async () => root.unmount()); host.remove()
   })
   it('switches copy without changing interpolation values', () => {

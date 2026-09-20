@@ -11,13 +11,43 @@ const profile: ArkmeUserProfile = {
   bindings: { apple: false, wechat: true, google: false }, contact: { phoneMasked: '138****0000' },
 }
 describe('phone unbind dialog', () => {
+  it('does not repeat the entry check while pending or update a closed dialog', async () => {
+    mocks.call.mockReset()
+    let finish!: (value: unknown) => void
+    mocks.call.mockReturnValue(new Promise(resolve => { finish = resolve }))
+    const onClose = vi.fn()
+    const renderer = create(<PhoneBindDialog config={undefined} profile={profile} onClose={onClose} onUpdated={() => {}} />)
+    const enter = renderer.root.findAllByType('button').find(b => b.children.includes('解绑手机号'))!.props.onClick
+    act(() => { enter(); enter() })
+    expect(mocks.call).toHaveBeenCalledTimes(1)
+    act(() => renderer.unmount())
+    await act(async () => { finish({ allowed: true }); await Promise.resolve() })
+    expect(onClose).not.toHaveBeenCalled()
+  })
+  it.each(['denied', 'offline', 'missing'])('keeps the change form when eligibility is %s', async scenario => {
+    mocks.call.mockReset()
+    mocks.captcha.mockReset()
+    if (scenario === 'offline') mocks.call.mockRejectedValue(new Error('offline'))
+    else mocks.call.mockResolvedValue(scenario === 'denied' ? { allowed: false } : {})
+    const renderer = create(<PhoneBindDialog config={undefined} profile={profile} onClose={() => {}} onUpdated={() => {}} />)
+    await act(async () => {
+      renderer.root.findAllByType('button').find(b => b.children.includes('解绑手机号'))!.props.onClick()
+      await Promise.resolve()
+    })
+    expect(renderer.root.findAllByType('input').filter(i => i.props.inputMode === 'tel')).toHaveLength(1)
+    expect(renderer.root.findByProps({ role: 'status' }).children.join('')).not.toBe('')
+    expect(mocks.call).toHaveBeenCalledTimes(1)
+    expect(mocks.call).toHaveBeenCalledWith('auth.phone.unbind.check', { expectedUserId: 42 })
+    expect(mocks.captcha).not.toHaveBeenCalled()
+    renderer.unmount()
+  })
   it('closes into the binding gate without fetching an authenticated profile', async () => {
     mocks.call.mockReset()
     mocks.call.mockResolvedValue({ status: 'binding-required', environment: 'test', userId: 42 })
     const onClose = vi.fn()
     const onUpdated = vi.fn()
     const renderer = create(<PhoneBindDialog config={undefined} profile={profile} onClose={onClose} onUpdated={onUpdated} />)
-    act(() => { renderer.root.findAllByType('button').find(b => b.children.includes('解绑手机号'))!.props.onClick() })
+    await act(async () => { mocks.call.mockResolvedValueOnce({ allowed: true }); renderer.root.findAllByType('button').find(b => b.children.includes('解绑手机号'))!.props.onClick(); await Promise.resolve() }); mocks.call.mockClear()
     act(() => { renderer.root.findAllByType('input').find(i => i.props.inputMode === 'numeric')!.props.onChange({ target: { value: '123456' } }) })
     await act(async () => { renderer.root.findByType('form').props.onSubmit({ preventDefault() {} }); await Promise.resolve() })
     expect(onClose).toHaveBeenCalledTimes(1)
@@ -31,7 +61,7 @@ describe('phone unbind dialog', () => {
     mocks.call.mockReturnValue(new Promise((_, no) => { reject = no }))
     const onClose = vi.fn()
     const renderer = create(<PhoneBindDialog config={undefined} profile={profile} onClose={onClose} onUpdated={() => {}} />)
-    act(() => { renderer.root.findAllByType('button').find(b => b.children.includes('解绑手机号'))!.props.onClick() })
+    await act(async () => { mocks.call.mockResolvedValueOnce({ allowed: true }); renderer.root.findAllByType('button').find(b => b.children.includes('解绑手机号'))!.props.onClick(); await Promise.resolve() }); mocks.call.mockClear()
     expect(renderer.root.findAllByType('input').filter(i => i.props.inputMode === 'tel')).toHaveLength(0)
     expect(renderer.root.findAllByProps({ className: 'arkme-account-rule' }).some(p => p.children.includes('138****0000'))).toBe(true)
     act(() => { renderer.root.findAllByType('input').find(i => i.props.inputMode === 'numeric')!.props.onChange({ target: { value: '123456' } }) })
@@ -51,7 +81,7 @@ describe('phone unbind dialog', () => {
     const onClose = vi.fn()
     const onUpdated = vi.fn()
     const renderer = create(<PhoneBindDialog config={undefined} profile={profile} onClose={onClose} onUpdated={onUpdated} />)
-    act(() => { renderer.root.findAllByType('button').find(b => b.children.includes('解绑手机号'))!.props.onClick() })
+    await act(async () => { mocks.call.mockResolvedValueOnce({ allowed: true }); renderer.root.findAllByType('button').find(b => b.children.includes('解绑手机号'))!.props.onClick(); await Promise.resolve() }); mocks.call.mockClear()
     act(() => { renderer.root.findAllByType('input').find(i => i.props.inputMode === 'numeric')!.props.onChange({ target: { value: '123456' } }) })
     act(() => { renderer.root.findByType('form').props.onSubmit({ preventDefault() {} }) })
     act(() => { renderer.unmount() })

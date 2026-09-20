@@ -497,6 +497,23 @@ export class AuthService {
     return await this.acceptLoginSession(sessionAfterPhoneLogin)
   }
 
+  async checkPhoneUnbindEligibility(expectedUserId: number): Promise<{ allowed: boolean }> {
+    const session = await this.runtime.requireSession()
+    if (session.userId !== expectedUserId) {
+      throw new ArkmePluginError('phone-unbind-session-changed', '账号已切换，请重新打开账号设置', false)
+    }
+    const data = await this.runtime.authenticatedAuthGet<{ user_id?: unknown; can_unbind_phone?: unknown }>(
+      '/api/v1/auth/get-user-info?include_phone_unbind_eligibility=true', session, undefined,
+      { lane: 'auth', bypassCache: true },
+    )
+    const current = await this.runtime.requireSession()
+    if (current.userId !== session.userId || current.refreshToken !== session.refreshToken
+      || data.user_id !== session.userId || typeof data.can_unbind_phone !== 'boolean') {
+      throw new ArkmePluginError('phone-unbind-eligibility-unknown', '账号状态未确认，请重新打开账号设置', true)
+    }
+    return { allowed: data.can_unbind_phone }
+  }
+
   async sendPhoneUnbindCode(captcha: ArkmeCaptchaResult): Promise<{ sent: true }> {
     const session = await this.runtime.requireSession()
     const data = await this.runtime.post<PhoneUnbindResponse>(

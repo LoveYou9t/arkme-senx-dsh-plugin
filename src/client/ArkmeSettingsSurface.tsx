@@ -480,6 +480,33 @@ export function PhoneBindDialog({
     return () => { window.clearTimeout(timer) }
   }, [countdown])
 
+  const changePhoneMode = async () => {
+    if (busyRef.current) return
+    if (unbind) {
+      setUnbind(false)
+      setCode(''); setStatus(''); setCountdown(0)
+      return
+    }
+    busyRef.current = true
+    setPhoneBusy(true)
+    setStatus('')
+    try {
+      const result = await callArkme<{ allowed: boolean }>('auth.phone.unbind.check', { expectedUserId: profile.userId })
+      if (!mountedRef.current) return
+      if (result.allowed !== true) {
+        setStatus(result.allowed === false ? tr('当前仅绑定了手机号，请先绑定其他登录方式') : tr('账号状态未确认，请重新打开账号设置'))
+        return
+      }
+      setUnbind(true)
+      setCode(''); setCountdown(0)
+    } catch (caught) {
+      if (mountedRef.current) setStatus(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      busyRef.current = false
+      if (mountedRef.current) setPhoneBusy(false)
+    }
+  }
+
   const sendCode = async () => {
     if (busyRef.current || countdown > 0) return
     if (!phoneValid) {
@@ -538,7 +565,6 @@ export function PhoneBindDialog({
   return <SettingsDialog title={actionLabel} onClose={() => { if (!busyRef.current) onClose() }}>
     <form className="arkme-account-form" onSubmit={event => { void verify(event) }}>
       {profile.contact.phoneMasked !== undefined ? <p className="arkme-account-rule">{tr("当前绑定的手机号码为")} {profile.contact.phoneMasked}</p> : null}
-      {unbind && <p className="arkme-account-rule">{tr('解绑后无法使用此手机号登录，仍需按现有规则绑定手机号后使用。')}</p>}
       {!unbind && <label>
         <span>{tr("手机号")}</span>
         <input value={phone} autoFocus inputMode="tel" placeholder={tr("请输入手机号")} onChange={event => { setPhone(event.target.value) }} />
@@ -554,7 +580,7 @@ export function PhoneBindDialog({
       </label>
       {status !== '' ? <p className={`arkme-account-dialog-status${status.includes('失败') || status.includes('错误') || status.includes('请输入') || status.includes('已绑定') ? ' is-error' : ''}`} role="status">{status}</p> : null}
       <div className="arkme-account-dialog-actions">
-        {profile.contact.phoneMasked !== undefined && <button data-arkme-feedback="neutral" className="arkme-phone-mode-action" type="button" disabled={phoneBusy} onClick={() => { setUnbind(!unbind); setCode(''); setStatus(''); setCountdown(0) }}>{tr(unbind ? '返回更换手机号' : '解绑手机号')}</button>}
+        {profile.contact.phoneMasked !== undefined && <button data-arkme-feedback="neutral" className="arkme-phone-mode-action" type="button" disabled={phoneBusy} onClick={() => { void changePhoneMode() }}>{tr(unbind ? '返回更换手机号' : '解绑手机号')}</button>}
         <button data-arkme-feedback="neutral" type="button" disabled={phoneBusy} onClick={onClose}>{tr("取消")}</button>
         <button data-arkme-feedback="primary" type="submit" disabled={phoneBusy || !phoneValid || !codeValid}>{phoneBusy ? <CircleNotch className="arkme-icon-spin" size={16} aria-hidden /> : null}{tr(unbind ? '确认解绑' : profile.contact.phoneMasked === undefined ? '绑 定' : '更 换')}</button>
       </div>
