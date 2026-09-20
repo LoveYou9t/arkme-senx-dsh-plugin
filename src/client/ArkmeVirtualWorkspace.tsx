@@ -1,3 +1,4 @@
+import { openConversationWindow } from './conversation-window.js'
 import { tr, useArkmeLocale, arkmeIntlLocale } from './locale.js'
 import { directorySearchLayout } from './directory-search-layout.js'
 import { ArkmeActionMenu } from './ArkmeDshMenu.js'
@@ -981,6 +982,10 @@ export function ArkmeNavigation({
     arkmeArkoConversationPreviewStore.getSnapshot,
   )
   const [error, setError] = useState('')
+  const openIndependentConversation = (source: ArkmeSourceItem | undefined) => {
+    if (!source) { setError('会话尚未就绪，请稍后重试'); return }
+    void openConversationWindow(source).catch(caught => setError(caught instanceof Error ? caught.message : '会话窗口打开失败'))
+  }
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false)
   const [quickAddBlockingOpen, setQuickAddBlockingOpen] = useState(false)
   const [activeDirectoryEntryId, setActiveDirectoryEntryId] = useState<string>()
@@ -1941,6 +1946,8 @@ export function ArkmeNavigation({
   const renderSelfEntry = (onClick?: () => void) => (<button
           ref={selfEntryRef}
           type="button" role="treeitem"
+          onDoubleClick={() => openIndependentConversation(sendToSelfSource ?? chatDirectory.projection?.sendToSelf ?? sources.find(source => source.kind === 'send_to_self'))}
+          title={tr('双击在独立窗口打开')}
           aria-label={tr("发给自己")}
           data-arkme-home-tour-target="send-to-self"
           aria-haspopup="tree"
@@ -2170,6 +2177,8 @@ export function ArkmeNavigation({
             disabled={interactionsDisabled}
             aria-busy={mutationPending || undefined}
             onClick={() => { selectSource(source) }}
+            onDoubleClick={() => { if (source.kind === 'private_chat' || source.kind === 'group_chat') openIndependentConversation(source) }}
+            title={tr('双击在独立窗口打开')}
             onContextMenu={event => {
               event.preventDefault()
               if (mutationPending || interactionsDisabled) return
