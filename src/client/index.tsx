@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client'
 import { ArkmeLongArticleWindow } from './ArkmeLongArticleWindow.js'
 import { bindLongArticleWindowAccount, longArticleWindowRequested } from './long-article-window.js'
+import { bindAttachmentPreviewAccount } from './attachment-preview-auth-binding.js'
 import type { ClientContext, ISessions } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
 import type {} from '@deepseek-ai/dsh-client-ui-layout/client'
@@ -139,6 +140,7 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => connectArkmeLocale(ctx.locale), 'dsh-arkme: product language')
 
   ctx.effect(() => bindLongArticleWindowAccount(), 'dsh-arkme: article window account')
+  ctx.effect(() => bindAttachmentPreviewAccount(), 'dsh-arkme: attachment preview account lifetime')
   ctx.effect(() => arkmeAppUpdateStore.start(), 'dsh-arkme: client app update bridge')
   ctx.effect(() => installHarnessConversationLayoutLoader(ctx, document), 'dsh-arkme: native wide conversation exports')
   ctx.effect(() => {

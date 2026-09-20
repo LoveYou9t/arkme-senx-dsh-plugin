@@ -1,5 +1,7 @@
 import { NATIVE_FORWARD_ENTRY, isNativeForwardCaller, nativeForwardPreview, type NativeForwardDelivery, type NativeForwardWindow, type NativeForwardEntry, type NativeForwardResult } from './native-forward-entry.js'
 import { longArticleWindowBridge, openLongArticleWindow } from './long-article-window.js'
+import { attachmentPreviewBridge } from './attachment-preview-window.js'
+import { openSessionAttachmentPreview } from './ArkmeRichContent.js'
 import { tr, useArkmeLocale, arkmeIntlLocale } from './locale.js'
 import { ArkmeActionMenu } from './ArkmeDshMenu.js'
 import { useComposerPasteFocus } from './composer-paste-focus.js'
@@ -7968,6 +7970,7 @@ export function ArkmeSurface({
                           </span>}
                             <ArkmeMessageContent
                               key={`message-content:${conversationOverlayKey}`}
+                              sessionAttachmentPreview
                               item={item}
                               mediaSelectionIsExplicit={reeditItems.has(item)}
                               onCallDetailOpen={videoUrl => { openNoteDetail(item, videoUrl) }}
@@ -8272,10 +8275,22 @@ export function ArkmeSurface({
                   && arkmeRecordReeditAttachmentBlock(view) !== undefined)}
               onPreview={attachment => {
                 if (activeRecordReeditComposer === undefined) {
-                  if (attachment.localFile !== undefined) setDraftPreview(localFileBlock(attachment.localFile))
+                  if (attachment.localFile !== undefined) {
+                    const block = localFileBlock(attachment.localFile)
+                    if (attachmentPreviewBridge()?.version === 1) {
+                      try { openSessionAttachmentPreview(attachments.flatMap(value => value.localFile === undefined ? [] : [localFileBlock(value.localFile)]), block, 'composer') }
+                      catch { setError('无法创建预览窗口，请再次点击附件重试') }
+                    } else setDraftPreview(block)
+                  }
                 } else {
                   const view = activeRecordReeditComposer.attachments.find(view => arkmeAttachmentId(view) === arkmeAttachmentId(attachment))
-                  if (view !== undefined) setDraftPreview(arkmeRecordReeditAttachmentBlock(view))
+                  if (view !== undefined) {
+                    const block = arkmeRecordReeditAttachmentBlock(view)
+                    if (block !== undefined && attachmentPreviewBridge()?.version === 1) {
+                      try { openSessionAttachmentPreview(activeRecordReeditComposer.attachments.flatMap(value => { const item = arkmeRecordReeditAttachmentBlock(value); return item === undefined ? [] : [item] }), block, 'composer-reedit') }
+                      catch { setError('无法创建预览窗口，请再次点击附件重试') }
+                    } else setDraftPreview(block)
+                  }
                 }
               }}
               onRemove={attachment => {

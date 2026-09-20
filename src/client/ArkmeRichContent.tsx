@@ -1,11 +1,12 @@
 import { openLongArticleWindow } from './long-article-window.js'
+import { AttachmentPreviewSurface, attachmentPreviewBridge, showAttachmentPreview, closeAttachmentPreview } from './attachment-preview-window.js'
 import { tr, useArkmeLocale } from './locale.js'
 import { useArkmeLivePhotoPlayback } from './live-photo-playback.js'
 import { ArkmeLivePhotoBadge } from './ArkmeLivePhotoBadge.js'
 import { arkmeMarkdownPlainText } from '../markdown.js'
 import { preserveTextTogglePosition } from './preserve-text-toggle-position.js'
 import { ArkmeMarkdownBody } from './ArkmeMarkdownBody.js'
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { ArkmeFileIcon } from './ArkmeFileIcon.js'
 import { arkmeTheme } from './arkme-theme.js'
@@ -417,7 +418,7 @@ function MediaGallery({ blocks, failures, retryVersions, onOpen, onFailure, onRe
   </div>
 }
 
-export function ArkmeFileCard({ block, fallback = false, onOpen, previewOpen = false }: { block: ArkmeContentBlock; fallback?: boolean; onOpen?: (block: ArkmeContentBlock) => void; previewOpen?: boolean }) {
+export function ArkmeFileCard({ alwaysPreview = false, block, fallback = false, onOpen, previewOpen = false }: { alwaysPreview?: boolean; block: ArkmeContentBlock; fallback?: boolean; onOpen?: (block: ArkmeContentBlock) => void; previewOpen?: boolean }) {
   useArkmeLocale()
   const [open, setOpen] = useState(false)
   const [opening, setOpening] = useState(false)
@@ -434,7 +435,7 @@ export function ArkmeFileCard({ block, fallback = false, onOpen, previewOpen = f
   const showReception = () => { if (onOpen !== undefined) onOpen(block); else setOpen(true) }
   const activate = async () => {
     if (controller.current !== undefined && !controller.current.signal.aborted) return
-    if (original.localRef === undefined || arkmeCanPreviewFile(block)) { showReception(); return }
+    if (alwaysPreview || original.localRef === undefined || arkmeCanPreviewFile(block)) { showReception(); return }
     const request = new AbortController(); controller.current = request
     setOpening(true)
     try { await fileSdk.openLocalFile(original.localRef, request.signal) }
@@ -565,6 +566,10 @@ export function ArkmeMediaPreview({ blocks, selected, onSelect, onClose, preview
   openLocalFile?: boolean
   forceDownload?: boolean
 }) {
+  const previewDocument = useContext(AttachmentPreviewSurface)
+  const standalone = previewDocument !== undefined
+  const document = previewDocument ?? globalThis.document
+  const window = document?.defaultView ?? globalThis.window
   useArkmeLocale()
   const index = Math.max(0, blocks.findIndex(block => block.mediaRef === selected.mediaRef))
   const dialogRef = useRef<HTMLDivElement>(null)
@@ -590,7 +595,7 @@ export function ArkmeMediaPreview({ blocks, selected, onSelect, onClose, preview
     && !arkmeCanInlineLocalFile(selected.mimeType, selected.fileName) && selected.mediaRef !== selected.localFileRef
   const originalUrl = previewUrl ?? (keepLiveCoverPreview ? `${mediaRoute}?ref=${encodeURIComponent(selected.mediaRef)}`
     : original.localRef === undefined ? arkmeContentMediaUrl(selected) : arkmeLocalFileUrl(original.localRef))
-  const { notice: actionNotice, showNotice: showActionNotice, clearNotice: clearActionNotice } = useArkmeFileActionNotice()
+  const { notice: actionNotice, showNotice: showActionNotice, clearNotice: clearActionNotice } = useArkmeFileActionNotice(standalone ? 2000 : 800)
   const previousDisabled = navigation === undefined ? index <= 0 : navigation.previous === undefined
   const nextDisabled = navigation === undefined ? index >= blocks.length - 1 : navigation.next === undefined
 
@@ -675,6 +680,7 @@ export function ArkmeMediaPreview({ blocks, selected, onSelect, onClose, preview
     const previous = document.activeElement as HTMLElement | null
     dialog?.focus()
     return () => {
+      if (standalone) for (const media of dialog?.querySelectorAll<HTMLMediaElement>('video,audio') ?? []) { media.pause(); media.removeAttribute('src'); media.load() }
       if (document.activeElement === document.body || dialog?.contains(document.activeElement)) previous?.focus()
     }
   }, [filePreview])
@@ -768,7 +774,7 @@ export function ArkmeMediaPreview({ blocks, selected, onSelect, onClose, preview
 
   if (filePreview) return <ArkmeFileViewer block={selected} blocks={blocks} onSelect={onSelect} onClose={onClose} openLocalFile={openLocalFile} forceDownload={forceDownload} navigation={navigation} />
 
-  return <div ref={dialogRef} tabIndex={-1} style={styles.previewOverlay} role="dialog" aria-modal="true" aria-label={selected.fileName} onClick={onClose}
+  return <div ref={dialogRef} tabIndex={-1} style={{ ...styles.previewOverlay, ...(standalone ? { outline: 'none' } : {}) }} role="dialog" aria-modal={standalone ? undefined : true} aria-label={selected.fileName} onClick={standalone ? undefined : onClose}
     onKeyDown={event => {
       event.stopPropagation()
       if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.preventDefault(); onClose() }
@@ -779,18 +785,18 @@ export function ArkmeMediaPreview({ blocks, selected, onSelect, onClose, preview
         else if (!event.shiftKey && (document.activeElement === last || document.activeElement === dialogRef.current)) { event.preventDefault(); first?.focus() }
       }
     }}>
-    <div style={styles.previewBody} onClick={closeOnBlankClick}>
+    <div style={styles.previewBody} onClick={standalone ? undefined : closeOnBlankClick}>
       <style>{`
         [data-arkme-preview-close]:hover { background: rgba(20,22,24,.4) !important; }
         [data-arkme-preview-close]:active { background: rgba(20,22,24,.5) !important; }
         [data-arkme-media-preview-actions] button:not(:disabled):hover { box-shadow: inset 0 0 0 30px rgba(255,255,255,.14); }
         [data-arkme-media-preview-actions] button:not(:disabled):active { box-shadow: inset 0 0 0 30px rgba(255,255,255,.20); }
       `}</style>
-      <button type="button" style={styles.previewClose} data-arkme-preview-close aria-label={tr("关闭预览")} title={tr("关闭预览")} onClick={onClose}>
+      {!standalone && <button type="button" style={styles.previewClose} data-arkme-preview-close aria-label={tr("关闭预览")} title={tr("关闭预览")} onClick={onClose}>
         <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
           <path d="M1.0804 2.81662C0.59579 2.33201 0.595791 1.5463 1.0804 1.06169C1.56501 0.577077 2.35072 0.577077 2.83533 1.06169L8.14213 6.36849L13.4489 1.06169C13.9335 0.577075 14.7193 0.577076 15.2039 1.06169C15.6885 1.5463 15.6885 2.33201 15.2039 2.81662L9.89707 8.12342L15.2225 13.4489C15.7071 13.9335 15.7071 14.7192 15.2225 15.2038C14.7379 15.6884 13.9522 15.6884 13.4676 15.2038L8.14213 9.87835L2.81666 15.2038C2.33205 15.6884 1.54634 15.6884 1.06173 15.2038C0.577121 14.7192 0.577121 13.9335 1.06173 13.4489L6.3872 8.12342L1.0804 2.81662Z" />
         </svg>
-      </button>
+      </button>}
       <div style={styles.previewStage}>
         {selected.kind === 'image'
           ? <div
@@ -833,11 +839,11 @@ export function ArkmeMediaPreview({ blocks, selected, onSelect, onClose, preview
       </div>
       {livePhoto.video !== null && <div style={styles.previewStage}>{livePhoto.video}</div>}
       <div style={styles.previewActions} data-arkme-media-preview-actions="bottom">
-        <ArkmeFileActionNavButton label={tr("上一个媒体")} direction="left" disabled={previousDisabled} onClick={() => { if (!previousDisabled) { if (navigation) navigation.previous?.(); else selectMedia(blocks[index - 1]!) } }} />
+        {(!standalone || blocks.length > 1) && <><ArkmeFileActionNavButton label={tr("上一个媒体")} direction="left" disabled={previousDisabled} onClick={() => { if (!previousDisabled) { if (navigation) navigation.previous?.(); else selectMedia(blocks[index - 1]!) } }} />
+        {standalone ? <span style={{ color: "white", padding: "0 16px" }}>{index + 1} / {blocks.length}</span> : <span aria-hidden style={styles.previewActionWideGap} />}
+        <ArkmeFileActionNavButton label={tr("下一个媒体")} direction="right" disabled={nextDisabled} onClick={() => { if (!nextDisabled) { if (navigation) navigation.next?.(); else selectMedia(blocks[index + 1]!) } }} /></>}
         <span aria-hidden style={styles.previewActionWideGap} />
-        <ArkmeFileActionNavButton label={tr("下一个媒体")} direction="right" disabled={nextDisabled} onClick={() => { if (!nextDisabled) { if (navigation) navigation.next?.(); else selectMedia(blocks[index + 1]!) } }} />
-        <span aria-hidden style={styles.previewActionWideGap} />
-        <ArkmeFileActions block={selected} original={original} copySourceUrl={previewUrl ?? (selected.mediaRef === selected.localFileRef ? undefined : `${mediaRoute}?ref=${encodeURIComponent(selected.mediaRef)}`)} onImageCopyNotice={showActionNotice} showDownloadStatus={false} hideDownloadAfterSave={false} style={styles.previewActionPair} />
+        <ArkmeFileActions block={selected} original={original} copySourceUrl={previewUrl ?? (selected.mediaRef === selected.localFileRef ? undefined : `${mediaRoute}?ref=${encodeURIComponent(selected.mediaRef)}`)} onImageCopyNotice={showActionNotice} onDownloadNotice={standalone ? showActionNotice : undefined} showDownloadStatus={false} hideDownloadAfterSave={false} style={styles.previewActionPair} />
       </div>
       <ArkmeFileActionToast notice={actionNotice} style={styles.previewActionToast} />
     </div>
@@ -933,7 +939,8 @@ export function arkmeRelatedRecordingItemFromSharedRecording(item: ArkmeTimeline
     : arkmeRelatedRecordingItemFromSharedRecordingPreview(item.sharedRecording, item)
 }
 
-export function ArkmeMessageContent({ item, sourceRef, sourceIdentityKey, sourceDisplayName, onLongArticleUpdated, highlightMentions = false, collapseText = true, presentation = 'bubble', shareWebsite, onMessageCopyLinkOpen, onMentionClick, isMentionClickable, mediaSelectionIsExplicit = false, onCallDetailOpen, onArticleOpen }: {
+export function ArkmeMessageContent({ sessionAttachmentPreview = false, item, sourceRef, sourceIdentityKey, sourceDisplayName, onLongArticleUpdated, highlightMentions = false, collapseText = true, presentation = 'bubble', shareWebsite, onMessageCopyLinkOpen, onMentionClick, isMentionClickable, mediaSelectionIsExplicit = false, onCallDetailOpen, onArticleOpen }: {
+  sessionAttachmentPreview?: boolean
   item: ArkmeTimelineItem
   presentation?: 'bubble' | 'detail'
   sourceRef?: string
@@ -972,6 +979,7 @@ export function ArkmeMessageContent({ item, sourceRef, sourceIdentityKey, source
   useEffect(() => {
     if (preview !== undefined && previewBlock === undefined) setPreview(undefined)
   }, [preview, previewBlock])
+  const [previewError, setPreviewError] = useState('')
   const [articleOpen, setArticleOpen] = useState(false)
   const [failures, setFailures] = useState<Map<string, MediaFailure>>(() => new Map())
   const [retryVersions, setRetryVersions] = useState<Map<string, number>>(() => new Map())
@@ -1025,8 +1033,17 @@ export function ArkmeMessageContent({ item, sourceRef, sourceIdentityKey, source
       return next
     })
   }
-  const openPreview = (block: ArkmeContentBlock) => { setPreview({ sourceKey: mediaSourceKey, itemUid: item.itemUid, fileAssetUid: block.fileAssetUid, mediaRef: block.mediaRef }) }
-  const openAsFile = (block: ArkmeContentBlock) => { setPreview({ sourceKey: mediaSourceKey, itemUid: item.itemUid, fileAssetUid: block.fileAssetUid, mediaRef: block.mediaRef, forceDownload: true }) }
+  const openPreview = (block: ArkmeContentBlock, forceDownload = false) => {
+    if (sessionAttachmentPreview && attachmentPreviewBridge()?.version === 1) {
+      try {
+        openSessionAttachmentPreview(visualBlocks, block, `${mediaSourceKey ?? ''}:${item.itemUid}`, forceDownload)
+        setPreviewError('')
+      } catch { setPreviewError('无法创建预览窗口，请再次点击附件重试') }
+      return
+    }
+    setPreview({ sourceKey: mediaSourceKey, itemUid: item.itemUid, fileAssetUid: block.fileAssetUid, mediaRef: block.mediaRef, forceDownload })
+  }
+  const openAsFile = (block: ArkmeContentBlock) => { openPreview(block, true) }
   const isArticle = item.templateKind === 8 || item.displayKind === 1
   const bodyTextFormat = item.senderKind === 'bot' && item.textContent.trim() !== ''
     ? 'markdown' : item.textFormat ?? 'plain'
@@ -1077,7 +1094,7 @@ export function ArkmeMessageContent({ item, sourceRef, sourceIdentityKey, source
       onError={() => { markFailed(row, arkmeCanInlineLocalFile(row.mimeType, row.fileName) ? 'retryable' : 'unsupported') }}
     />
     if (row.kind === 'audio') return renderVoice(row)
-    return <ArkmeFileCard key={row.mediaRef} block={row} onOpen={openPreview} previewOpen={previewBlock?.mediaRef === row.mediaRef} />
+    return <ArkmeFileCard key={row.mediaRef} block={row} alwaysPreview={sessionAttachmentPreview && attachmentPreviewBridge()?.version === 1} onOpen={openPreview} previewOpen={previewBlock?.mediaRef === row.mediaRef} />
   })
 
   return <>
@@ -1113,6 +1130,7 @@ export function ArkmeMessageContent({ item, sourceRef, sourceIdentityKey, source
         {item.mediaUnavailable === true ? '媒体暂时无法加载' : '暂不支持的非文本内容'}
       </p>}
     </div>
+    {previewError && <p role="alert">{previewError}</p>}
     {preview !== undefined && previewBlock !== undefined && typeof document !== 'undefined' && createPortal(
       <ArkmeMediaPreview blocks={visualBlocks} selected={previewBlock} onSelect={openPreview} onClose={() => { setPreview(undefined) }} {...(preview.forceDownload === undefined ? {} : { forceDownload: preview.forceDownload })} />,
       document.body,
@@ -1181,4 +1199,22 @@ export function ArkmeAttachmentDraftTile({ asset, previewUrl, onRemove, onOpen, 
       style={{ position: 'absolute', top: 2, right: 2, width: 16, height: 16, display: 'grid', placeItems: 'center', border: 0, borderRadius: 999, padding: 0, background: arkmeTheme.menu, color: arkmeTheme.text, boxShadow: '0 1px 3px rgba(0,0,0,.14)', cursor: 'pointer', fontSize: 13, lineHeight: '16px' }}
     >×</button>
   </span>
+}
+
+/** Session-only entry; owns a snapshot independent of the currently selected chat. */
+export function openSessionAttachmentPreview(blocks: ArkmeContentBlock[], selected: ArkmeContentBlock, source: string, forceDownload = false): void {
+  const identity = `${source}:${selected.fileAssetUid ?? selected.mediaRef}:${String(forceDownload)}`
+  showAttachmentPreview(identity, doc => { doc.title = selected.fileName || '文件预览'; return <SessionAttachmentPreview key={identity} blocks={blocks} initial={selected} source={source} forceDownload={forceDownload} /> })
+}
+function SessionAttachmentPreview({blocks, initial: selected, source, forceDownload}: {blocks: ArkmeContentBlock[]; initial: ArkmeContentBlock; source: string; forceDownload: boolean}) {
+  const select = (block: ArkmeContentBlock) => openSessionAttachmentPreview(blocks, block, source, forceDownload)
+  const index = blocks.findIndex(block => (block.fileAssetUid ?? block.mediaRef) === (selected.fileAssetUid ?? selected.mediaRef))
+  return <div onKeyDownCapture={event => {
+    const target = event.target as HTMLElement
+    if (event.nativeEvent.isComposing || event.altKey || event.ctrlKey || event.metaKey || target.closest?.('input,textarea,select,video,audio,[contenteditable="true"],[role="slider"]')) return
+    const next = event.key === 'ArrowLeft' ? index - 1 : event.key === 'ArrowRight' ? index + 1 : -1
+    if (next >= 0 && next < blocks.length) { event.preventDefault(); event.stopPropagation(); select(blocks[next]!) }
+  }}>
+    <ArkmeMediaPreview key={selected.fileAssetUid ?? selected.mediaRef} blocks={blocks} selected={selected} onSelect={select} onClose={closeAttachmentPreview} forceDownload={forceDownload} openLocalFile={false} />
+  </div>
 }
