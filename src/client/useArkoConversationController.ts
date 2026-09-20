@@ -55,11 +55,14 @@ export function arkoHistoryHasTerminalRun(
 
 function waitForNextPoll(signal: AbortSignal, delayMillis = 1_200): Promise<void> {
   return new Promise(resolve => {
-    const timeout = setTimeout(resolve, delayMillis)
-    signal.addEventListener('abort', () => {
+    if (signal.aborted) { resolve(); return }
+    const finish = () => {
       clearTimeout(timeout)
+      signal.removeEventListener('abort', finish)
       resolve()
-    }, { once: true })
+    }
+    const timeout = setTimeout(finish, delayMillis)
+    signal.addEventListener('abort', finish, { once: true })
   })
 }
 

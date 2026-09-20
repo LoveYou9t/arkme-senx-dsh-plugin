@@ -138,3 +138,31 @@ it('coalesces same-tick history recovery and cancels it on unmount', async () =>
   await act(async () => { resolve({ items: [older], hasMore: false }); await first })
   root = createRoot(host)
 })
+
+it('releases elapsed poll listeners and stops polling when the owner unmounts', async () => {
+  const base = vi.mocked(callArkme).getMockImplementation()!
+  let signal: AbortSignal | undefined
+  vi.mocked(callArkme).mockImplementation(async (op, args, abort) => {
+    if (op === 'arko.history') return { items: [{ ...current, runUid: 'running-task', runStatus: 'running' }], hasMore: false } as never
+    if (op === 'arko.run.status') { signal = abort; return { status: 'running' } as never }
+    return base(op, args, abort)
+  })
+  const added = vi.spyOn(AbortSignal.prototype, 'addEventListener')
+  const removed = vi.spyOn(AbortSignal.prototype, 'removeEventListener')
+  vi.useFakeTimers()
+  try {
+    await mount()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1200 * 20) })
+    expect(signal).toBeDefined()
+    const count = (spy: typeof added) => spy.mock.calls.filter((args, index) => args[0] === 'abort' && spy.mock.contexts[index] === signal).length
+    expect(count(added) - count(removed)).toBe(1)
+    const calls = vi.mocked(callArkme).mock.calls.filter(([op]) => op === 'arko.run.status').length
+    expect(calls).toBe(20)
+    await act(async () => root.unmount())
+    root = createRoot(host)
+    expect(signal?.aborted).toBe(true)
+    expect(count(added) - count(removed)).toBe(0)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1200 * 3) })
+    expect(vi.mocked(callArkme).mock.calls.filter(([op]) => op === 'arko.run.status')).toHaveLength(calls)
+  } finally { vi.useRealTimers(); added.mockRestore(); removed.mockRestore() }
+})
