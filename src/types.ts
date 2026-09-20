@@ -464,6 +464,8 @@ export interface ArkmeCalendarBucketDay {
   anchor?: ArkmeCalendarAnchor
   momentAnchor?: ArkmeCalendarMomentAnchor
   conversationCounts?: { messages: number; interactions: number }
+  /** Source-presence markers used by the multi-source personal day calendar. */
+  activityMarkers?: { chat?: boolean; call?: boolean; recording?: boolean; arko?: boolean; bot?: boolean }
 }
 
 export interface ArkmeCalendarBucketPage {
@@ -485,6 +487,7 @@ export interface ArkmeCalendarRecordCursor {
 }
 
 export interface ArkmeCalendarRecordItem extends ArkmeCalendarAnchor {
+  locationSummary?: { label?: string; capturedAtMillis?: number }
   /** Device-captured observation, never a shared place or an inferred stay. */
   locationObservation?: ArkmeRecordLocationObservation
   /** Short-lived, account-bound capability for an explicit location detail read. */
@@ -1547,6 +1550,17 @@ export interface ArkmeSourceItem {
   /** Current viewer's confirmed Chat read cursor; distinct from the last message sequence. */
   readSequence?: number
   recordCount?: number
+  /**
+   * Account-bound projection of Chat-owned group @ activity for this private
+   * contact. It is deliberately separate from direct-message unreadCount so
+   * the global conversation badge and private-chat read cursor are unchanged.
+   */
+  privateInteraction?: {
+    latest: ArkmePrivateInteraction
+    unreadCount: number
+    attentionCount: number
+    version: string
+  }
 }
 
 /** Account-bound pin snapshot; does not describe directory membership or message state. */
@@ -1954,6 +1968,13 @@ export interface ArkmeForwardRecordPreviewItem {
   senderName: string
   /** Opaque Provider image reference for the snapshotted sender. */
   avatarRef?: string
+  /**
+   * Account id of the snapshotted sender, present only when the Provider
+   * resolved a real account and it is not the viewer, so the snapshot can offer
+   * a private chat. Transcript speaker labels are never identities and never
+   * populate this field.
+   */
+  senderUserId?: number
   sendAtMillis: number
   title: string
   textContent: string
@@ -3600,6 +3621,9 @@ export type ArkmePluginOperation =
   | 'billing.order.status'
   | 'contacts.search'
   | 'directory.list'
+  | 'private-interaction.summary'
+  | 'private-interaction.query'
+  | 'private-interaction.directory'
   | 'contacts.add'
   | 'chat.private.open-from-contact'
   | 'group.create'
@@ -3632,6 +3656,7 @@ export type ArkmePluginOperation =
   | 'calendar.buckets'
   | 'calendar.chat-statistics'
   | 'calendar.records'
+  | 'calendar.activity'
   | 'calendar.day-recap'
   | 'calendar.record-location'
   | 'user.profile'
@@ -3956,6 +3981,8 @@ export type ArkmePluginResponse<T = unknown> =
 export interface ArkmePrivateInteraction {
   interactionRef: string
   privateSourceRef: string
+  /** Stable opaque chat identity, independent of reference labels/activity. */
+  privateSourceKey?: string
   peerName: string
   groupSourceRef: string
   groupName: string
@@ -3980,6 +4007,11 @@ export interface ArkmePrivateInteractionSummary extends ArkmePrivateInteractionC
 }
 export interface ArkmePrivateInteractionPage extends ArkmePrivateInteractionCoverage {
   items: ArkmePrivateInteraction[]
+  hasMore: boolean
+  nextCursor?: string
+}
+export interface ArkmePrivateInteractionDirectoryPage extends ArkmePrivateInteractionCoverage {
+  items: ArkmeSourceItem[]
   hasMore: boolean
   nextCursor?: string
 }
