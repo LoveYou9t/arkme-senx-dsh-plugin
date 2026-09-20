@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { createArkoNativeTransport } from './arko-native-transport.js'
 import type { ArkoConversationActions, ArkoConversationSnapshot } from './arko-conversation-contract.js'
+import { arkmeTheme } from './arkme-theme.js'
+import { ArkmeArkoAvatar } from './ArkmeArkoAvatar.js'
 import { arkoNativeFrameDocument } from './arko-native-frame.js'
 
 export interface ArkoNativeUiActions {
@@ -66,7 +68,20 @@ export function ArkoNativeSurface({ snapshot, actions, ui }: {
   }, [snapshot.accountKey, attempt, snapshot.loading])
   return <section data-arkme-owned="arko-native-surface" style={{ height: '100%', minHeight: 0, position: 'relative', display: 'flex', flexDirection: 'column' }}>
     {error && <div role="alert">{error}<button onClick={() => setAttempt(value => value + 1)}>重新加载原生页面</button></div>}
-    {!ready && !error && <div role="status">正在加载原生 Arko 页面…</div>}
+    {!ready && !error && <div role="status" aria-label="正在加载 Arko 对话" data-arko-loading-skeleton
+      style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', background: arkmeTheme.base }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '16px 24px', borderBottom: `1px solid ${arkmeTheme.border}` }}>
+        <ArkmeArkoAvatar size={30} /><span style={{ color: arkmeTheme.text }}>{snapshot.displayName}</span>
+      </div>
+      <div aria-hidden style={{ flex: 1, width: 'min(720px, 86%)', margin: '24px auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+        {[70, 45, 82].map((width, index) => <div key={index} style={{ width: `${width}%`, height: index === 1 ? 40 : 64,
+          alignSelf: index === 1 ? 'flex-end' : 'flex-start', borderRadius: 12, background: arkmeTheme.layer2 }} />)}
+      </div>
+      <div style={{ width: 'min(720px, 86%)', margin: '0 auto 24px' }}>
+        <div aria-hidden style={{ height: 92, border: `1px solid ${arkmeTheme.border}`, borderRadius: 16, background: arkmeTheme.layer2 }} />
+        <div style={{ textAlign: 'center', color: arkmeTheme.secondary, fontSize: 12, paddingTop: 10 }}>正在加载对话…</div>
+      </div>
+    </div>}
     {html && <iframe name="arkme-arko-native" title="Arko 原生 DSH 页面" srcDoc={html} style={{ border: 0, width: '100%', flex: 1, minHeight: 0, visibility: ready && !error ? 'visible' : 'hidden' }} aria-hidden={!ready || !!error} allow="clipboard-read; clipboard-write" />}
   </section>
 }

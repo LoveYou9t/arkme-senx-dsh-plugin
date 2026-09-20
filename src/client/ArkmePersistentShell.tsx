@@ -14,6 +14,7 @@ import { startArkmeDirectoryBadge } from './directory-badge-runtime.js'
 import { ArkmeProductNavigation } from './ArkmeProductNavigation.js'
 import { ArkmeQuickAddButton } from './ArkmeQuickAdd.js'
 import { arkmePrependSourceByIdentity } from './source-identity.js'
+import { ArkmeArkoPanel } from './ArkmeArkoPanel.js'
 import { ArkmeSurface } from './ArkmeSidebar.js'
 import { ArkmeNavigation } from './ArkmeVirtualWorkspace.js'
 import type { ArkmeDshMessageSearchResult } from './ArkmeSearchSurface.js'
@@ -514,7 +515,8 @@ export function ArkmePersistentWorkspace({
   const contactsMode = ui.mode === 'source' && ui.productMode === 'contacts'
   const webLockedHarness = !startupAuthGateEnabled() && authState.auth?.status !== 'authenticated'
   const harnessVisible = ui.mode === 'harness' || webLockedHarness
-  const conversationHidden = harnessVisible || contactsMode
+  const arkoVisible = ui.mode === 'arko' && !webLockedHarness
+  const conversationHidden = harnessVisible || contactsMode || arkoVisible
   const conversationActive = !conversationHidden && ui.calendarOpen !== true
   const contactsContextRef = useRef({ accountKey: contactsAccountKey, contactsMode })
   contactsContextRef.current = { accountKey: contactsAccountKey, contactsMode }
@@ -540,6 +542,7 @@ export function ArkmePersistentWorkspace({
       accountScope={contactsAccountKey}
       followSession={ui.mode === 'harness'}
     />
+    {contactsAccountKey !== undefined && <ArkmeArkoPanel key={contactsAccountKey} visible={arkoVisible} />}
     {!webLockedHarness && <div
         data-arkme-owned="arkme-conversation-layer"
         style={{

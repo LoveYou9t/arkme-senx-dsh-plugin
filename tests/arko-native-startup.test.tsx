@@ -16,10 +16,12 @@ it('keeps the native landing page invisible until the session view reports ready
   try {
     await act(async () => root.render(<ArkoNativeSurface snapshot={snapshot} actions={actions} ui={ui} />))
     const frame = () => host.querySelector('iframe')!
+    expect(host.querySelector('[data-arko-loading-skeleton]')).not.toBeNull()
     expect(frame().style.visibility).toBe('hidden')
     expect(frame().getAttribute('aria-hidden')).toBe('true')
     const old = [...window.__arkmeArkoNativeFrames!.values()][0] as ArkoNativeCarrier
     await act(async () => old.ready())
+    expect(host.querySelector('[data-arko-loading-skeleton]')).toBeNull()
     expect(frame().style.visibility).toBe('visible')
     await act(async () => root.render(<ArkoNativeSurface snapshot={{ ...snapshot, accountKey: 'b' }} actions={actions} ui={ui} />))
     expect(frame().style.visibility).toBe('hidden')
