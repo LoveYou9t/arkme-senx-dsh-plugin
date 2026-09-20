@@ -42,7 +42,7 @@ export type MessageActionReference =
   | SubjectBotMessageActionReference
 
 /** Local DSH snapshots are deliberately outside the signed MessageActionReference union. */
-export interface NativeMessageForwardSnapshot {
+export interface NativeMessageSnapshot {
   ownerKind: 'dsh_native'
   sessionId: string
   messageIdentity: string
@@ -53,7 +53,7 @@ export interface NativeMessageForwardSnapshot {
   senderUserId: number
   senderName: string
 }
-export type ForwardMessage = MessageActionReference | NativeMessageForwardSnapshot
+export type MessageActionSource = MessageActionReference | NativeMessageSnapshot
 
 export interface AgentMessageActionConversation {
   version: 2
@@ -87,14 +87,14 @@ export interface MessageActionGateway {
   maxTextLength(): number
   openTarget(targetSourceRef: string, userId: number): Promise<MessageActionTarget>
   createCopyLink(
-    references: readonly MessageActionReference[],
+    references: readonly (MessageActionReference | NativeMessageSnapshot)[],
     session: ArkmeSessionCredentials,
     signal?: AbortSignal,
   ): Promise<ArkmeMessageCopyLinkResult>
   forwardToChat(input: {
     targetSourceRef: string
     target: Extract<MessageActionTarget, { kind: 'private_chat' }> | Extract<MessageActionTarget, { kind: 'group_chat' }>
-    references: readonly ForwardMessage[]
+    references: readonly MessageActionSource[]
     requestId: string
     sendAtMillis: number
     commentText: string
@@ -104,7 +104,7 @@ export interface MessageActionGateway {
   forwardToRecord(input: {
     targetSourceRef: string
     target: Exclude<MessageActionTarget, { kind: 'private_chat' | 'group_chat' }>
-    references: readonly ForwardMessage[]
+    references: readonly MessageActionSource[]
     requestId: string
     recordUid: string
     sendAtMillis: number

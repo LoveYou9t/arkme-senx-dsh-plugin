@@ -1,4 +1,4 @@
-import { NATIVE_FORWARD_MAX_MESSAGES, NATIVE_FORWARD_MAX_TEXT_BYTES, NATIVE_FORWARD_MAX_TOTAL_BYTES, type NativeChatForwardSnapshot } from '../native-chat-forward-contract.js'
+import { NATIVE_FORWARD_MAX_MESSAGES, NATIVE_FORWARD_MAX_TEXT_BYTES, NATIVE_FORWARD_MAX_TOTAL_BYTES, type NativeChatSelectionSnapshot } from '../native-chat-selection-contract.js'
 export interface NativeSelectionSnapshot {
   readonly active: boolean
   readonly keys: ReadonlySet<string>
@@ -77,7 +77,7 @@ export function nativeSelectionCopyText(chat: NativeChat, key: string): string {
 }
 
 /** Freeze the selected public projections; DOM order and selection order are not message order. */
-export function nativeSelectionForwardSnapshot(chat: NativeChat, sessionId: string, keys: ReadonlySet<string>): NativeChatForwardSnapshot {
+export function nativeSelectionSnapshot(chat: NativeChat, sessionId: string, keys: ReadonlySet<string>): NativeChatSelectionSnapshot {
   if (!sessionId.trim() || keys.size === 0 || keys.size > NATIVE_FORWARD_MAX_MESSAGES) throw new Error('请选择 1–100 条消息')
   let bytes = 0
   const messages = [...keys].map(key => {
@@ -87,10 +87,10 @@ export function nativeSelectionForwardSnapshot(chat: NativeChat, sessionId: stri
       || !('data' in node) || !object(node.data) || typeof node.data.time !== 'number'
       || !Number.isSafeInteger(node.data.time) || node.data.time <= 0) throw new Error('所选消息暂不可用，请重新选择')
     const text = nativeSelectionText(chat, key)
-    if (!text.trim()) throw new Error('所选消息没有可转发正文，请调整选择')
+    if (!text.trim()) throw new Error('所选消息没有可用正文，请调整选择')
     const size = new TextEncoder().encode(text).byteLength
     bytes += size
-    if (size > NATIVE_FORWARD_MAX_TEXT_BYTES || bytes > NATIVE_FORWARD_MAX_TOTAL_BYTES) throw new Error('所选正文超过转发大小限制，请减少选择')
+    if (size > NATIVE_FORWARD_MAX_TEXT_BYTES || bytes > NATIVE_FORWARD_MAX_TOTAL_BYTES) throw new Error('所选正文超过大小限制，请减少选择')
     return { key, anchorSeq: node.anchorSeq, role: node.kind === 'user' ? 'user' as const : 'assistant' as const, text, createdAtMillis: node.data.time }
   }).sort((a, b) => a.anchorSeq - b.anchorSeq)
   if (new Set(messages.map(message => message.anchorSeq)).size !== messages.length) throw new Error('所选消息顺序暂不可用，请重新选择')

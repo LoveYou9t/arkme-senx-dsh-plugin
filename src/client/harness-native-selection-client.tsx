@@ -1,3 +1,4 @@
+import { NativeCopyLinkAction } from './NativeCopyLinkAction.js'
 import { NativeForwardAction } from './NativeForwardAction.js'
 import { tr, useArkmeLocale } from './locale.js'
 import { ArkmeActionMenu } from './ArkmeDshMenu.js'
@@ -217,12 +218,7 @@ function NativeSelectionSession({ sessionId, useChat, doc }: { sessionId: string
       style={{ ...messageSelectionStyles.selectBar, height: '100%', borderTop: 0 }}>
       <style>{nativeSelectionActionOverlayCss}</style>
       <NativeCopyTextAction key={state.keys.size === 1 ? [...state.keys][0] : 'no-single-selection'} chat={chat} selectedKey={state.keys.size === 1 ? [...state.keys][0] : undefined} doc={doc} />
-      {([{ kind: 'link', label: '复制链接' }] as const).map(action =>
-        <button key={action.kind} type="button" disabled title={tr("暂未接入")} aria-label={action.label}
-          style={{ ...messageSelectionStyles.selectBarButton, ...messageSelectionStyles.selectBarButtonDisabled }}>
-          <span style={messageSelectionStyles.selectBarIconTile}><ArkmeSelectActionIcon kind={action.kind} size={22} /></span>
-          <span style={messageSelectionStyles.selectBarLabel}>{action.label}</span>
-        </button>)}
+      <NativeCopyLinkAction chat={chat} keys={state.keys} sessionId={sessionId} doc={doc} />
       {forwardButton}
       <button data-arkme-feedback="neutral" type="button" aria-label={tr("退出多选")} style={messageSelectionStyles.selectBarButton} onClick={exit}>
         <span style={messageSelectionStyles.selectBarIconTile}><ArkmeSelectActionIcon kind="close" size={18} /></span>

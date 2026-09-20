@@ -3883,6 +3883,7 @@ export type ArkmeHostOperation = ArkmePluginOperation
   | 'message-actions.copy-link'
   | 'message-actions.forward'
   | 'native-chat.forward'
+  | 'native-chat.copy-link'
   | 'plugin.update.status'
   | 'plugin.update.check'
   | 'plugin.update.acknowledge'

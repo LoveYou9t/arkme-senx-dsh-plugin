@@ -173,3 +173,21 @@ it('accepts native Markdown beyond the standard 128 KiB body limit using its bou
     expect(forwardNativeChat).toHaveBeenCalledTimes(1)
   } finally { server.close(); await once(server, 'close') }
 })
+
+it('routes native copy-link content separately from signed message references', async () => {
+  const service = { copyNativeChatLink: vi.fn(async () => ({ sid: 'sid', url: 'https://share.test/s/sid' })) } as unknown as ArkmeService
+  const snapshot = { sessionId: 'native', messages: [] }
+  const signal = new AbortController().signal
+  await dispatchArkmeHostOperation(service, 'native-chat.copy-link', { snapshot, expectedUserId: 42, actionRefs: ['must-not-use'] }, undefined, undefined, undefined, undefined, signal)
+  expect(service.copyNativeChatLink).toHaveBeenCalledWith(snapshot, 42, signal)
+})
+it('rejects a foreign origin for native copy-link before service access', async () => {
+  const service = { copyNativeChatLink: vi.fn() } as unknown as ArkmeService
+  const server = createServer(createArkmeHostApi(service, { expectedPort: 3080, allowNonLoopback: false }))
+  server.listen(0, '127.0.0.1'); await once(server, 'listening')
+  const address = server.address(); if (!address || typeof address === 'string') throw new Error('missing address')
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/arkme-self/api`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'https://foreign.test' }, body: JSON.stringify({ operation: 'native-chat.copy-link', params: {} }) })
+    expect(response.status).toBe(403); expect(service.copyNativeChatLink).not.toHaveBeenCalled()
+  } finally { server.close(); await once(server, 'close') }
+})
