@@ -1043,6 +1043,8 @@ export async function dispatchArkmeHostOperation(
       stringParam(params, 'phone'),
       captchaParam(params),
     )
+    case 'auth.phone.unbind.send': return await service.sendPhoneUnbindCode(captchaParam(params))
+    case 'auth.phone.unbind': return await service.unbindPhone(stringParam(params, 'code'))
     case 'auth.phone.verify': return await service.verifyPhoneCode(
       stringParam(params, 'phone'),
       stringParam(params, 'code'),

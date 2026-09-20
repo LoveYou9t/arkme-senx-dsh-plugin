@@ -1910,6 +1910,14 @@ export class ArkmeService {
     return await this.auth.sendPhoneCode(phone, captcha)
   }
 
+  async sendPhoneUnbindCode(captcha: ArkmeCaptchaResult): Promise<{ sent: true }> {
+    return await this.auth.sendPhoneUnbindCode(captcha)
+  }
+
+  async unbindPhone(code: string): Promise<ArkmeAuthSnapshot> {
+    return await this.auth.unbindPhone(code)
+  }
+
   async verifyPhoneCode(phone: string, code: string): Promise<ArkmeAuthSnapshot> {
     return await this.auth.verifyPhoneCode(phone, code)
   }

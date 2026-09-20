@@ -849,6 +849,11 @@ TA 公开分享的内容|Publicly shared content
 微信号|WeChat
 绑定|Connect
 换绑|Change
+解/换绑|Disconnect / change
+解绑手机号|Disconnect phone number
+返回更换手机号|Back to changing phone number
+确认解绑|Confirm disconnect
+解绑后无法使用此手机号登录，仍需按现有规则绑定手机号后使用。|After disconnecting, this phone number cannot be used to sign in. A phone number is still required to use the app.
 绑定中…|Connecting…
 通用|General
 隐私与权限|Privacy & permissions

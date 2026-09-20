@@ -3566,6 +3566,8 @@ export type ArkmePluginOperation =
   | 'auth.test.login'
   | 'auth.phone.send'
   | 'auth.phone.verify'
+  | 'auth.phone.unbind.send'
+  | 'auth.phone.unbind'
   | 'auth.logout'
   | 'user-ban.status'
   | 'chat.direct-message-admission'
