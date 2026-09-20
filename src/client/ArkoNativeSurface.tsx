@@ -75,10 +75,10 @@ export function ArkoNativeSurface({ snapshot, actions, ui }: {
       </div>
       <div aria-hidden style={{ flex: 1, width: 'min(720px, 86%)', margin: '24px auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
         {[70, 45, 82].map((width, index) => <div key={index} style={{ width: `${width}%`, height: index === 1 ? 40 : 64,
-          alignSelf: index === 1 ? 'flex-end' : 'flex-start', borderRadius: 12, background: arkmeTheme.layer2 }} />)}
+          alignSelf: index === 1 ? 'flex-end' : 'flex-start', borderRadius: 12, background: arkmeTheme.hover }} />)}
       </div>
       <div style={{ width: 'min(720px, 86%)', margin: '0 auto 24px' }}>
-        <div aria-hidden style={{ height: 92, border: `1px solid ${arkmeTheme.border}`, borderRadius: 16, background: arkmeTheme.layer2 }} />
+        <div aria-hidden style={{ height: 92, border: `1px solid ${arkmeTheme.border}`, borderRadius: 16, background: arkmeTheme.hover }} />
         <div style={{ textAlign: 'center', color: arkmeTheme.secondary, fontSize: 12, paddingTop: 10 }}>正在加载对话…</div>
       </div>
     </div>}
