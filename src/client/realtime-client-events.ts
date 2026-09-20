@@ -66,7 +66,7 @@ export function useArkmeRealtimeClientEvents(
   auth: ArkmeAuthSnapshot | undefined,
   authRevision: number,
   refreshDirectoryBaseline: boolean,
-  { ownsMessagePreparing = false }: { ownsMessagePreparing?: boolean } = {},
+  { ownsMessagePreparing = false, ownsNotifications = true }: { ownsMessagePreparing?: boolean; ownsNotifications?: boolean } = {},
 ): void {
   useEffect(() => {
     void arkmeAuthStore.refresh().catch(() => undefined)
@@ -279,7 +279,7 @@ export function useArkmeRealtimeClientEvents(
           return
         }
         if (update.type === 'message-notification') {
-          void arkmeDesktopNotifications.show(update.notification)
+          if (ownsNotifications) void arkmeDesktopNotifications.show(update.notification)
           return
         }
         if (update.type === 'projection-invalidated') {
@@ -307,11 +307,13 @@ export function useArkmeRealtimeClientEvents(
           return
         }
         if (update.type === 'chat-policy-invalidated') {
+          if (update.refresh === 'none') return
           arkmeChatDirectory.invalidateRoot()
           void arkmeChatDirectory.refreshRoot({ force: true, silent: true }).catch(() => undefined)
           return
         }
         if (update.type === 'conversation-list-preference-invalidated') {
+          if (update.refresh === 'none') return
           arkmeUi.chatChanged()
           return
         }
@@ -392,5 +394,5 @@ export function useArkmeRealtimeClientEvents(
       browserWindow?.removeEventListener('focus', handleWindowFocus)
       browserWindow?.removeEventListener('online', recoverDirectory)
     }
-  }, [auth?.environment, auth?.status, auth?.userId, authRevision, refreshDirectoryBaseline, ownsMessagePreparing])
+  }, [auth?.environment, auth?.status, auth?.userId, authRevision, refreshDirectoryBaseline, ownsMessagePreparing, ownsNotifications])
 }

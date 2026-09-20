@@ -1213,6 +1213,11 @@ export interface ArkmeCallVideoPerspective {
   posterUrl?: string
 }
 
+/** A share is a public capability plus login, never the account-bound callRef. */
+export interface ArkmeCallShareLink { url: string }
+export interface ArkmeCallShareViewer { viewId: string; userId: number; displayName: string; avatarRef?: string; viewedAtMillis: number }
+export interface ArkmeCallShareViewers { items: ArkmeCallShareViewer[]; nextCursor: string }
+
 export interface ArkmeCallDetail {
   /** Stable occurrence identity; callRef is renewable and must not be used for equality. */
   stableId?: string
@@ -1942,6 +1947,8 @@ export interface ArkmeForwardTranscriptSegment {
 }
 
 export interface ArkmeForwardRecordPreviewItem {
+  /** Built-in AI presentation asset; never a user identity. */
+  avatarKind?: 'deepseek'
   templateKind?: number
   displayKind?: number
   senderName: string
@@ -3523,9 +3530,13 @@ export type ArkmeChatClientEvent = {
 } | {
   type: 'chat-policy-invalidated'
   revision: number
+  /** Host owns the targeted refresh; consumers wait for directory-update. */
+  refresh?: 'none'
 } | {
   type: 'conversation-list-preference-invalidated'
   revision: number
+  /** Host owns the targeted refresh; consumers wait for directory-update. */
+  refresh?: 'none'
 } | {
   type: 'members-invalidated'
   revision: number
@@ -3770,6 +3781,8 @@ export type ArkmePluginOperation =
   | 'calls.outgoing.diag'
   | 'calls.history.list'
   | 'calls.history.detail'
+  | 'calls.share.ensure'
+  | 'calls.share.viewers'
   | 'calls.history.summary.retry'
   | 'extensions.mine.list'
   | 'extensions.mine.publish'
@@ -3876,6 +3889,8 @@ export type ArkmeHostOperation = ArkmePluginOperation
   | 'arko.cancel'
   | 'message-actions.copy-link'
   | 'message-actions.forward'
+  | 'native-chat.forward'
+  | 'native-chat.copy-link'
   | 'plugin.update.status'
   | 'plugin.update.check'
   | 'plugin.update.acknowledge'
@@ -3936,3 +3951,43 @@ export interface ArkmePluginErrorBody {
 export type ArkmePluginResponse<T = unknown> =
   | { ok: true; value: T }
   | { ok: false; error: ArkmePluginErrorBody }
+
+/** Chat-owned directed human mentions. Never add these counts to the global badge. */
+export interface ArkmePrivateInteraction {
+  interactionRef: string
+  privateSourceRef: string
+  peerName: string
+  groupSourceRef: string
+  groupName: string
+  sequence: number
+  occurredAtMillis: number
+  senderIsMe: boolean
+  summary: string
+  unread: boolean
+  attention: boolean
+}
+export interface ArkmePrivateInteractionCoverage {
+  contractVersion: 1
+  version: string
+  sourceScope: 'chat_group_mentions'
+  scopeComplete: true
+  uncoveredSources: string[]
+}
+export interface ArkmePrivateInteractionSummary extends ArkmePrivateInteractionCoverage {
+  latest?: ArkmePrivateInteraction
+  unreadCount: number
+  attentionCount: number
+}
+export interface ArkmePrivateInteractionPage extends ArkmePrivateInteractionCoverage {
+  items: ArkmePrivateInteraction[]
+  hasMore: boolean
+  nextCursor?: string
+}
+export interface ArkmePrivateInteractionQueryOptions {
+  sourceRef?: string
+  unreadOnly?: boolean
+  limit?: number
+  cursor?: string
+  expectedVersion?: string
+  signal?: AbortSignal
+}

@@ -1,3 +1,11 @@
+import { conversationWindowRequested, navigateConversationWindow } from './conversation-window.js'
+import { conversationSending, withConversationSend } from './conversation-window-sync.js'
+import { DeepSeekLogoMark } from './ArkmeDshAgentInputMarker.js'
+import { createNativeCopyLinkEntry, NATIVE_COPY_LINK_ENTRY, type NativeCopyLinkWindow } from './native-copy-link-entry.js'
+import { NATIVE_FORWARD_ENTRY, isNativeForwardCaller, nativeForwardPreview, type NativeForwardDelivery, type NativeForwardWindow, type NativeForwardEntry, type NativeForwardResult } from './native-forward-entry.js'
+import { longArticleWindowBridge, openLongArticleWindow } from './long-article-window.js'
+import { attachmentPreviewBridge } from './attachment-preview-window.js'
+import { openSessionAttachmentPreview } from './ArkmeRichContent.js'
 import { tr, useArkmeLocale, arkmeIntlLocale } from './locale.js'
 import { ArkmeActionMenu } from './ArkmeDshMenu.js'
 import { useComposerPasteFocus } from './composer-paste-focus.js'
@@ -1090,7 +1098,8 @@ export function arkmeSelectedTimelineItems(
   return items.filter(item => selectedIds.has(arkmeTimelineOccurrenceKey(item)))
 }
 
-export async function arkmeCopyTextToClipboard(value: string): Promise<void> {
+export async function arkmeCopyTextToClipboard(value: string, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted()
   if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText !== undefined) {
     try {
       await navigator.clipboard.writeText(value)
@@ -1099,6 +1108,7 @@ export async function arkmeCopyTextToClipboard(value: string): Promise<void> {
       // Fall back to the old textarea path for embedded WebViews without clipboard grants.
     }
   }
+  signal?.throwIfAborted()
   if (typeof document === 'undefined') throw new Error('复制失败，请稍后重试')
   const textarea = document.createElement('textarea')
   textarea.value = value
@@ -1108,15 +1118,19 @@ export async function arkmeCopyTextToClipboard(value: string): Promise<void> {
   textarea.style.top = '0'
   document.body.appendChild(textarea)
   const selection = document.getSelection()
-  const ranges = selection === null ? [] : Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index))
-  textarea.select()
-  const copied = document.execCommand('copy')
-  document.body.removeChild(textarea)
-  if (selection !== null) {
-    selection.removeAllRanges()
-    for (const range of ranges) selection.addRange(range)
+  const ranges = selection === null ? [] : Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index).cloneRange())
+  const focused = document.activeElement
+  try {
+    textarea.select()
+    if (!document.execCommand('copy')) throw new Error('复制失败，请稍后重试')
+  } finally {
+    textarea.remove()
+    if (focused instanceof HTMLElement) focused.focus({ preventScroll: true })
+    if (selection !== null) {
+      selection.removeAllRanges()
+      for (const range of ranges) selection.addRange(range)
+    }
   }
-  if (!copied) throw new Error('复制失败，请稍后重试')
 }
 
 function arkmeForwardTargetKey(source: ArkmeSourceItem): string {
@@ -1921,6 +1935,7 @@ function CopyLinkRecordAvatar({ item, size = 46 }: { item: ArkmeMessageCopyLinkS
   const name = copyLinkSnapshotSenderName(item)
   const avatar = item.senderAvatarUrl?.trim() ?? ''
   const sizedStyle = { ...styles.copyLinkDetailPlaceholderAvatar, width: size, height: size }
+  if (item.sourceKind === 'dsh_native') return <span role="img" aria-label="DeepSeek Harness 头像" style={sizedStyle}><DeepSeekLogoMark style={{ width: size, height: size, color: arkmeTheme.accent, opacity: 1 }} /></span>
   if (/^(https?:|data:|blob:)/iu.test(avatar)) {
     return <span style={sizedStyle} aria-hidden><img src={avatar} alt="" draggable={false} style={styles.copyLinkDetailAvatarImage} /></span>
   }
@@ -2787,14 +2802,15 @@ export function ArkmeSurface({
   // Transport is per message.  It must never lock the next draft while a previous
   // message waits for the server, otherwise fast keyboard input is dropped.
   const archiveReadOnly = isArkmeDSHInputTopic(source) || isArkmeDSHInputTopic(selectedSource)
-  const canSend = activeRecordReeditComposer === undefined
+  useSyncExternalStore(conversationSending.subscribe, conversationSending.getRevision, conversationSending.getRevision)
+  const canSend = !conversationSending.has(composerDraftKey) && (activeRecordReeditComposer === undefined
     ? !archiveReadOnly && !directAdmission.blocked && (pendingArticle ? !pendingArticle.sending : arkmeComposerCanSend(draft, attachments.length + (composerDraftKey !== undefined && preparingKeys.has(composerDraftKey) ? 1 : 0), preparingFiles))
     : activeRecordReeditComposer.snapshot !== undefined
       && !activeRecordReeditComposer.loading
       && !activeRecordReeditComposer.busy
       && !preparingReeditFiles
       && (activeRecordReeditComposer.textContent.trim() !== ''
-        || activeRecordReeditComposer.attachments.length > 0 || activeRecordReeditComposer.snapshot.hasVoice === true)
+        || activeRecordReeditComposer.attachments.length > 0 || activeRecordReeditComposer.snapshot.hasVoice === true))
   const pendingComposerFocusDraftKeyRef = useRef<string>()
   const [compactNavigation, setCompactNavigation] = useState(false)
   const [submitBusy, setSubmitBusy] = useState(false)
@@ -2810,6 +2826,12 @@ export function ArkmeSurface({
   const conversationTargetLocatedRevisionRef = useRef(0)
   const conversationTargetAbortRef = useRef<AbortController>()
   const [error, setError] = useState(initialAuth?.status === 'binding-required' ? t('error.binding.required') : '')
+  const createLongArticle = async () => {
+    if (!source) return
+    try {
+      if (!await openLongArticleWindow({ ...source, sourceKey: conversationKey })) setLongArticleCreating(true)
+    } catch (caught) { setError(errorMessage(caught)) }
+  }
   const [agreed, setAgreed] = useState(true)
   const [loginMode, setLoginMode] = useState<ArkmeLoginMode>(initialAuth?.status === 'binding-required' ? 'phone' : 'jiwo')
   const [phone, setPhone] = useState('')
@@ -2880,7 +2902,15 @@ export function ArkmeSurface({
   useEffect(() => { setRecordDeletion(undefined) }, [topicAssignmentScopeKey, activeConversation, active])
   useEffect(() => { setTopicAssignment(undefined) }, [topicAssignmentScopeKey])
 
+  type NativeForwardRequest = {
+    preview: ReturnType<typeof nativeForwardPreview>
+    delivery: NativeForwardDelivery
+    signal: AbortSignal
+    finish(result: NativeForwardResult): void
+  }
+  const nativeForwardRequestRef = useRef<NativeForwardRequest>()
   const [forwardTargetPicker, setForwardTargetPicker] = useState<{
+    native?: NativeForwardRequest
     sourceKey: string
     itemUids: string[]
     items: ArkmeTimelineItem[]
@@ -3095,6 +3125,18 @@ export function ArkmeSurface({
     returnToLatest: boolean
   }>())
   const pendingViewportRestoreRef = useRef<ArkmeConversationViewportRestore>()
+  useEffect(() => longArticleWindowBridge()?.onCreated(receipt => {
+    if (receipt.accountKey !== authenticatedAccountKey) return
+    if (!receipt.article) confirmedSendRetention.retain(receipt.sourceKey, receipt.item)
+    if (receipt.sourceKey === conversationKey) {
+      pendingViewportRestoreRef.current = { sourceKey: conversationKey, viewport: undefined }
+      setItems(current => receipt.article?.mode === 'existing'
+        ? current.map(item => item.itemUid === receipt.item.itemUid ? { ...item, ...receipt.item } : item)
+        : mergeItems(current, [receipt.item]))
+    }
+    arkmeUi.recordChanged()
+    void arkmeChatDirectory.refreshRoot({ force: true, silent: true }).catch(() => {})
+  }), [authenticatedAccountKey, conversationKey, confirmedSendRetention, setItems])
   const viewportRestoreIntentRef = useRef<boolean>()
   const pendingConversationTargetLocateRef = useRef<{
     sourceKey: string
@@ -3503,6 +3545,16 @@ export function ArkmeSurface({
       setMomentRelatedDetailState({ kind: 'idle' })
     }
     if (kind !== 'related') closeRelatedPanel()
+  }
+
+  function openChatMessage(item: ArkmeTimelineItem) {
+    if (source && !item.forwardRecords && (item.templateKind === 8 || item.displayKind === 1)) {
+      void openLongArticleWindow({ ...source, sourceKey: conversationKey }, { mode: 'existing', item })
+        .then(opened => { if (!opened) openNoteDetail(item) })
+        .catch(error => setError(errorMessage(error)))
+      return
+    }
+    openNoteDetail(item)
   }
 
   function openNoteDetail(item: ArkmeTimelineItem, videoUrl?: string) {
@@ -4691,18 +4743,23 @@ export function ArkmeSurface({
   }, [])
 
   const send = async () => {
+    const scope = captureComposerAsyncScope()
+    try { await withConversationSend(composerDraftKey, async consumed => { if (sameComposerAsyncScope(scope)) await sendCore(consumed) }) }
+    catch (caught) { setError(errorMessage(caught)) }
+  }
+  const sendCore = async (consumed: () => Promise<void>) => {
     if (activeRecordReeditComposer === undefined && directAdmission.blocked) return
     if (activeRecordReeditComposer !== undefined) {
       await commitRecordReedit()
       return
     }
     if (source === undefined || composerDraftKey === undefined) return
-    if (pendingArticle && articleDraftKey && authenticatedUserId !== undefined) {
+    if (composerArticleStore.get(articleDraftKey) && articleDraftKey && authenticatedUserId !== undefined) {
       const scope = captureComposerAsyncScope()
       const auth = arkmeAuthStore.getSnapshot().auth
       if (!sameComposerAsyncScope(scope) || auth?.status !== 'authenticated') return
       messagePreparing.stop()
-      const result = await composerArticleStore.send(articleDraftKey, source.sourceRef, authenticatedUserId, auth.environment)
+      const result = await composerArticleStore.send(articleDraftKey, source.sourceRef, authenticatedUserId, auth.environment, consumed)
       if (!result || !sameComposerAsyncScope(scope)) return
       // Read the canonical forwarded/published card; do not synthesize article text as a normal message.
       const page = await callArkme<ArkmeTimelinePage>('source.timeline', { sourceRef: source.sourceRef, limit: 50 }).catch(() => undefined)
@@ -4752,6 +4809,7 @@ export function ArkmeSurface({
     // Take the draft before any network await.  The next keystroke now belongs to a
     // fresh draft and can be sent independently instead of being swallowed by a busy lock.
     const pendingDraft = arkmeComposerDraftStore.take(targetDraftKey)
+    try { await consumed() } catch (caught) { if (sameTargetAccount()) arkmeComposerDraftStore.restore(targetDraftKey, pendingDraft); throw caught }
     // The reference belongs to the submitted draft, not the next message. Do not
     // leave it visible until the network request and attachment cleanup finish.
     if (extensionTarget !== undefined && sameTargetComposer()) {
@@ -5251,6 +5309,13 @@ export function ArkmeSurface({
     })
   }, [aiPolishNotices, aiPolishSettings, detailItemUid, hasMore, items, loadTimeline, newerCursor, newerHasMore, nextCursor, source, sourceIsChat, sourceProjectionRevision])
   const activateSource = useCallback((nextSource: ArkmeTimelinePage['source']) => {
+    if (conversationWindowRequested()) {
+      void navigateConversationWindow(nextSource).then(result => {
+        if (result.destination === 'main') setError(`独立窗口打开失败（${result.reason}），已在主窗口打开该会话`)
+      }).catch(caught => setError(errorMessage(caught)))
+      return
+    }
+
     // The directory owns the middle conversation list. Update it before selecting
     // the source so sources opened outside that list (for example, from World)
     // have an entry to select immediately instead of waiting for its cached refresh.
@@ -6018,7 +6083,7 @@ export function ArkmeSurface({
       return selectedIds.size === 0 ? undefined : { ...current, selectedIds }
     })
     setForwardTargetPicker(current => {
-      if (current === undefined || current.sourceKey !== conversationKey) return current
+      if (current === undefined || current.native || current.sourceKey !== conversationKey) return current
       const items = current.items.filter(item => visibleOccurrenceKeys.has(arkmeTimelineOccurrenceKey(item)))
       if (items.length === current.items.length) return current
       return items.length === 0 ? undefined : { ...current, items, itemUids: items.map(item => item.itemUid) }
@@ -6789,21 +6854,24 @@ export function ArkmeSurface({
     targetSources: readonly ArkmeSourceItem[],
     commentText = '',
   ) => {
-    if (source === undefined || messageActionBusy !== undefined || forwardSubmissionScopeRef.current.sending || itemsToForward.length === 0) return
-    const sourceRef = source.sourceRef
+    const native = forwardTargetPicker?.native
+    if ((!native && (source === undefined || itemsToForward.length === 0)) || messageActionBusy !== undefined || forwardSubmissionScopeRef.current.sending) return
+    const sourceRef = source?.sourceRef
     const sourceKey = conversationKey
     const actionRefs = itemsToForward.map(arkmeTimelineMessageActionRef).filter(value => value !== '')
-    if (actionRefs.length === 0 || targetSources.length === 0) return
+    if ((!native && actionRefs.length === 0) || targetSources.length === 0) return
     const submissionScope = forwardSubmissionScopeRef.current
     submissionScope.sending = true
     const isCurrent = () => forwardSubmissionScopeRef.current === submissionScope
       && arkmeAuthenticatedAccountKey(arkmeAuthStore.getSnapshot().auth) === authenticatedAccountKey
-      && activeSourceKeyRef.current === sourceKey
+      && (native ? nativeForwardRequestRef.current === native && !native.signal.aborted : activeSourceKeyRef.current === sourceKey)
     const normalizedCommentText = commentText.trim()
     const controller = new AbortController()
     const timeout = window.setTimeout(() => {
       controller.abort()
     }, MESSAGE_FORWARD_REQUEST_TIMEOUT_MS)
+    const cancelNative = () => controller.abort()
+    native?.signal.addEventListener('abort', cancelNative, { once: true })
     setMessageActionBusy('forward')
     showMessageActionStatus('转发中', false)
     setError('')
@@ -6815,7 +6883,7 @@ export function ArkmeSurface({
         controller.signal.throwIfAborted()
         return {
           targetSource,
-          result: await callArkme<ArkmeSourceSendResult>('source.forward-messages', {
+          result: native ? await native.delivery.send(targetSource, normalizedCommentText, controller.signal) : await callArkme<ArkmeSourceSendResult>('source.forward-messages', {
             sourceRef,
             targetSourceRef: targetSource.sourceRef,
             actionRefs,
@@ -6852,6 +6920,18 @@ export function ArkmeSurface({
       const successfulTargets = results
         .filter((outcome): outcome is PromiseFulfilledResult<{ targetSource: ArkmeSourceItem; result: ArkmeSourceSendResult }> => outcome.status === 'fulfilled')
         .map(outcome => outcome.value.targetSource)
+      if (native) {
+        const retryTargets = results.flatMap((outcome, index) => outcome.status === 'rejected' || outcome.value.result.warningText
+          ? [arkmeForwardTargetKey(targetSources[index]!)] : [])
+        if (retryTargets.length) {
+          const message = warningText || `已转发 ${successCount} 个目标，${failureCount} 个失败，可重试`
+          setForwardTargetPicker(current => current?.native === native ? { ...current, selectedTargetKeys: retryTargets, sendError: message } : current)
+          return
+        }
+        native.finish({ completed: true })
+        setForwardTargetPicker(undefined)
+        return
+      }
       exitMessageSelectMode()
       setForwardTargetPicker(undefined)
       closeMessageMenu()
@@ -6866,13 +6946,14 @@ export function ArkmeSurface({
       }
     } finally {
       window.clearTimeout(timeout)
+      native?.signal.removeEventListener('abort', cancelNative)
       submissionScope.sending = false
-      if (isCurrent()) setMessageActionBusy(undefined)
+      if (forwardSubmissionScopeRef.current === submissionScope) setMessageActionBusy(undefined)
     }
-  }, [authenticatedAccountKey, closeMessageMenu, conversationKey, exitMessageSelectMode, loadTimeline, messageActionBusy, showForwardSuccessFeedback, showMessageActionStatus, source])
+  }, [authenticatedAccountKey, closeMessageMenu, conversationKey, exitMessageSelectMode, forwardTargetPicker, loadTimeline, messageActionBusy, showForwardSuccessFeedback, showMessageActionStatus, source])
   const confirmForwardTargets = useCallback(async () => {
     if (forwardTargetPicker === undefined) return
-    if (forwardTargetPicker.items.length === 0) {
+    if (!forwardTargetPicker.native && forwardTargetPicker.items.length === 0) {
       setForwardTargetPicker({ ...forwardTargetPicker, sendError: '请选择要转发的快记' })
       showMessageActionStatus('请选择要转发的快记')
       return
@@ -6887,6 +6968,62 @@ export function ArkmeSurface({
     }
     await forwardMessageItems(forwardPickerMessageItems, targets, forwardTargetPicker.commentText)
   }, [forwardMessageItems, forwardPickerMessageItems, forwardTargetPicker, forwardTargets, showMessageActionStatus])
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const host = window as NativeCopyLinkWindow
+    const entry = createNativeCopyLinkEntry(host, {
+      isCurrentAccount: userId => Boolean(authenticatedAccountKey && authenticatedUserId === userId && arkmeAuthenticatedAccountKey(arkmeAuthStore.getSnapshot().auth) === authenticatedAccountKey),
+      generate: (attempt, signal) => callArkme<ArkmeMessageCopyLinkResult>('native-chat.copy-link', { snapshot: attempt.snapshot, expectedUserId: attempt.userId }, signal),
+      copyText: arkmeCopyTextToClipboard,
+    })
+    host[NATIVE_COPY_LINK_ENTRY] = entry
+    return () => { if (host[NATIVE_COPY_LINK_ENTRY] === entry) delete host[NATIVE_COPY_LINK_ENTRY] }
+  }, [authenticatedAccountKey, authenticatedUserId])
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const host = window as NativeForwardWindow
+    const entry: NativeForwardEntry = {
+      async open(content, signal, caller) {
+        const { snapshot, userId } = content
+        if (host[NATIVE_FORWARD_ENTRY] !== entry || !isNativeForwardCaller(host, caller) || signal.aborted) throw new Error('DSH 对话已切换，请重新选择')
+        if (!authenticatedAccountKey || authenticatedUserId !== userId || arkmeAuthenticatedAccountKey(arkmeAuthStore.getSnapshot().auth) !== authenticatedAccountKey) throw new Error('账号已变化，请重新选择')
+        if (nativeForwardRequestRef.current || forwardPickerScopeRef.current || forwardSubmissionScopeRef.current.sending) throw new Error('请先完成当前转发')
+        if (!snapshot.sessionId || !snapshot.messages.length || snapshot.messages.length > 100) throw new Error('请选择 1 至 100 条消息')
+        const frozen = structuredClone(snapshot)
+        return await new Promise<NativeForwardResult>(resolve => {
+          let finished = false
+          const cancel = () => {
+            request.finish({ completed: false })
+            setForwardTargetPicker(current => current?.native === request ? undefined : current)
+          }
+          const request: NativeForwardRequest = {
+            preview: nativeForwardPreview(frozen), signal,
+            delivery: content.delivery,
+            finish(result) {
+              if (finished) return
+              finished = true
+              signal.removeEventListener('abort', cancel)
+              if (nativeForwardRequestRef.current === request) nativeForwardRequestRef.current = undefined
+              resolve(result)
+            },
+          }
+          nativeForwardRequestRef.current = request
+          signal.addEventListener('abort', cancel, { once: true })
+          forwardPickerScopeRef.current = new AbortController()
+          setForwardTargetPicker({ native: request, sourceKey: '', items: [], itemUids: [], selectedTargetKeys: [], keyword: '', commentText: content.delivery.comment ?? '', sendError: '' })
+        })
+      },
+    }
+    host[NATIVE_FORWARD_ENTRY] = entry
+    return () => {
+      if (host[NATIVE_FORWARD_ENTRY] === entry) delete host[NATIVE_FORWARD_ENTRY]
+      nativeForwardRequestRef.current?.finish({ completed: false })
+    }
+  }, [authenticatedAccountKey, authenticatedUserId])
+  useEffect(() => {
+    const request = nativeForwardRequestRef.current
+    if (request && forwardTargetPicker?.native !== request) request.finish({ completed: false })
+  }, [forwardTargetPicker])
   const rememberConversationViewport = useConversationViewport({
     active: activeConversation,
     sourceKey: conversationKey,
@@ -7182,7 +7319,129 @@ export function ArkmeSurface({
 
   const directRecordingNotice = ui.mode !== 'recordings' || !active ? <ArkmeDirectRecordingStatus floating /> : null
 
+  const forwardDialogContent = forwardTargetPicker !== undefined && (activeConversation || forwardTargetPicker.native !== undefined) ? (<div
+          data-arkme-notification-blocking-overlay="true"
+          style={{ ...styles.forwardTargetBackdrop, ...(forwardTargetPicker.native ? { position: 'fixed' as const, zIndex: 10000 } : {}) }}
+          role="presentation"
+          onMouseDown={event => { if (event.target === event.currentTarget && messageActionBusy !== 'forward') setForwardTargetPicker(undefined) }}
+        >
+          <section
+            style={styles.forwardTargetDialog}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="arkme-forward-target-title"
+          >
+            <header style={styles.forwardTargetHeader}>
+              <span aria-hidden />
+              <h3 id="arkme-forward-target-title" style={styles.forwardTargetTitle}>{tr("转发给")}</h3>
+              <button data-arkme-feedback="neutral"
+                type="button"
+                style={styles.forwardTargetClose}
+                disabled={messageActionBusy === 'forward'}
+                aria-label={tr("关闭转发对象选择")}
+                onClick={() => { if (messageActionBusy !== 'forward') setForwardTargetPicker(undefined) }}
+              >×</button>
+            </header>
+            <div style={styles.forwardTargetSearchWrap}>
+              <ArkmeForwardSearch
+                value={forwardTargetPicker.keyword}
+                disabled={messageActionBusy === 'forward'}
+                onChange={event => {
+                  const keyword = event.currentTarget.value
+                  setForwardTargetPicker(current => current === undefined
+                    ? current
+                    : { ...current, keyword })
+                }}
+              />
+            </div>
+            <div style={styles.forwardTargetBody}>
+              <ul style={styles.forwardTargetList} aria-label={tr("转发对象列表")}>
+                {(forwardSelfTarget !== undefined || forwardTargetPicker.keyword.trim() === '') && <li key="send_to_self">
+                  {forwardSelfTarget !== undefined ? renderForwardTargetButton(forwardSelfTarget) : <div
+                    aria-disabled="true" aria-label={tr("发给自己暂不可用")} style={{ ...styles.forwardTargetRow, cursor: 'default' }}>
+                    <span style={styles.forwardTargetCheck} aria-hidden />
+                    <ArkmeDirectorySourceAvatar source={{ kind: 'send_to_self' }} size={38} />
+                    <span style={styles.forwardTargetText}>
+                      <span style={styles.forwardTargetName}>{tr("发给自己")}</span>
+                      <span style={styles.forwardTargetMeta}>{tr("默认分类")}</span>
+                    </span>
+                  </div>}
+                </li>}
+                {forwardVisibleTargets.filter(target => target.kind !== 'send_to_self').map(target =>
+                  <li key={arkmeForwardTargetKey(target)}>{renderForwardTargetButton(target)}</li>)}
+                {forwardVisibleTargets.length === 0 && <li role="status" style={styles.forwardTargetStatus}>
+                  {forwardDirectory.loading ? '正在加载转发对象...' : '暂无可转发对象'}
+                </li>}
+              </ul>
+              {forwardDirectory.error !== '' && <div role="alert" style={styles.forwardTargetStatus}>{forwardDirectory.error}</div>}
+            </div>
+            {forwardSelectedTargets.length > 0 && <footer style={styles.forwardTargetFooter}>
+              <div style={styles.forwardTargetRecipients}>
+                <span>{tr("发送给：")}</span>
+                <span style={styles.forwardTargetAvatarStack}>
+                  {forwardSelectedTargets.slice(0, 6).map(target => <ArkmeDirectorySourceAvatar
+                    key={target.sourceRef}
+                    source={target}
+                    size={26}
+                  />)}
+                </span>
+              </div>
+              <div style={styles.forwardTargetFooterDivider} />
+              <div style={styles.forwardTargetPreview}>
+                <span style={styles.forwardTargetPreviewIcon}><ArkmeForwardLinearIcon size={18} /></span>
+                <span style={styles.forwardTargetPreviewText}>
+                  <span style={styles.forwardTargetPreviewTitle}><ArkmeRichText text={forwardTargetPicker.native?.preview.title ?? arkmeForwardPreviewTitle(forwardPickerMessageItems, source)} presentation="preview" /></span>
+                  <span style={styles.forwardTargetPreviewSubtitle}><ArkmeRichText text={forwardTargetPicker.native?.preview.subtitle ?? arkmeForwardPreviewSubtitle(forwardPickerMessageItems)} presentation="preview" /></span>
+                </span>
+                <button data-arkme-feedback="neutral"
+                  type="button"
+                  style={styles.forwardTargetPreviewClose}
+                  disabled={messageActionBusy === 'forward'}
+                  aria-label={tr("关闭转发对象选择")}
+                  onClick={() => { if (messageActionBusy !== 'forward') setForwardTargetPicker(undefined) }}
+                ><ArkmeForwardCloseBorderIcon /></button>
+              </div>
+              {forwardTargetPicker.sendError !== '' && <div role="alert" style={styles.forwardTargetSendError}>{forwardTargetPicker.sendError}</div>}
+              <div style={styles.forwardTargetComposer}>
+                <textarea
+                  style={styles.forwardTargetCommentInput}
+                  value={forwardTargetPicker.native?.delivery.comment ?? forwardTargetPicker.commentText}
+                  placeholder={tr("说点什么...")}
+                  aria-label={tr("转发附言")}
+                  disabled={messageActionBusy === 'forward' || forwardTargetPicker.native?.delivery.comment !== undefined}
+                  onChange={event => {
+                    const commentText = event.currentTarget.value
+                    setForwardTargetPicker(current => current === undefined
+                      ? current
+                      : { ...current, commentText })
+                  }}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                      event.preventDefault()
+                      void confirmForwardTargets()
+                    }
+                  }}
+                />
+                <button data-arkme-feedback="primary"
+                  type="button"
+                  style={{
+                    ...styles.forwardTargetSend,
+                    ...(messageActionBusy === 'forward' ? styles.forwardTargetSendDisabled : {}),
+                  }}
+                  disabled={messageActionBusy === 'forward'}
+                  aria-label={messageActionBusy === 'forward' ? '转发中' : '发送转发'}
+                  onClick={() => { void confirmForwardTargets() }}
+                >
+                  <ArkmeForwardSubmitIcon />
+                </button>
+              </div>
+            </footer>}
+          </section>
+        </div>) : null
+  const forwardDialog = forwardTargetPicker?.native && forwardDialogContent ? createPortal(forwardDialogContent, document.body) : forwardDialogContent
+
   if (!active) return <>
+    {forwardDialog}
     <div
       className="arkme-conversation-surface"
       ref={surfaceRef}
@@ -7523,7 +7782,7 @@ export function ArkmeSurface({
             onPrivateChatOpened={activateSource}
           />
           : ui.mode === 'voiceprint' ? <ArkmeVoiceprintSurface onBack={() => { arkmeUi.showRecordings() }} />
-          : ui.mode === 'arko' ? <ArkmeArkoSurface key={arkmeArkoSurfaceKey(auth)} />
+          : ui.mode === 'arko' ? <ArkmeArkoSurface native key={arkmeArkoSurfaceKey(auth)} />
           : botConversationVisible && ui.selectedBot !== undefined ? <ArkmeBotConversationSurface
             key={ui.selectedBot.botRef} bot={ui.selectedBot} onConversationActivity={bot => { arkmeUi.openBotConversation(bot) }} onDeleted={() => { arkmeUi.showHarness() }}
           />
@@ -7730,12 +7989,12 @@ export function ArkmeSurface({
                               if (event.target.closest('button,a,audio,video,input,select,textarea,[contenteditable],[role=link],[role=slider]')) return
                               if (window.getSelection()?.toString()) return
                               event.currentTarget.focus({ preventScroll: true })
-                              openNoteDetail(item)
+                              openChatMessage(item)
                             }}
                             onKeyDown={event => {
                               if (event.target !== event.currentTarget) return
                               if (event.key !== 'Enter' && event.key !== ' ') return
-                              event.preventDefault(); openNoteDetail(item)
+                              event.preventDefault(); openChatMessage(item)
                             }}
                             onContextMenu={event => { openMessageMenu(item, event, event.currentTarget) }}
                             data-arkme-message-direction={item.isMe ? 'self' : 'other'}
@@ -7747,11 +8006,13 @@ export function ArkmeSurface({
                           </span>}
                             <ArkmeMessageContent
                               key={`message-content:${conversationOverlayKey}`}
+                              sessionAttachmentPreview
                               item={item}
                               mediaSelectionIsExplicit={reeditItems.has(item)}
                               onCallDetailOpen={videoUrl => { openNoteDetail(item, videoUrl) }}
                               sourceRef={source.sourceRef}
                               sourceIdentityKey={conversationKey}
+                              sourceDisplayName={source.displayName}
                               highlightMentions
                               shareWebsite={shareWebsite}
                               onMessageCopyLinkOpen={openMessageCopyLinkDetail}
@@ -8018,7 +8279,7 @@ export function ArkmeSurface({
               getAnchorRect={() => addMenuTriggerRef.current?.getBoundingClientRect() ?? null}
               onClose={() => setAddMenuOpen(false)} actions={[
                 { id: 'files', label: '添加附件', icon: <IconPaperclipOutline16 />, onSelect: () => { setAddMenuOpen(false); fileInputRef.current?.click() } },
-                activeRecordReeditComposer === undefined && { id: 'article', label: sourceIsChat ? '添加长文' : '写长文', icon: <IconEditOutline16 />, disabled: pendingArticle?.sending === true, onSelect: () => { if (pendingArticle?.sending) return; if (sourceIsChat) setArticlePickerScope(captureComposerAsyncScope()); else setLongArticleCreating(true); setAddMenuOpen(false) } },
+                activeRecordReeditComposer === undefined && { id: 'article', label: sourceIsChat ? '添加长文' : '写长文', icon: <IconEditOutline16 />, disabled: pendingArticle?.sending === true, onSelect: () => { if (pendingArticle?.sending) return; if (sourceIsChat) setArticlePickerScope(captureComposerAsyncScope()); else void createLongArticle(); setAddMenuOpen(false) } },
               ]} />}
             <input ref={fileInputRef} type="file" multiple hidden onChange={event => { void selectFiles(event.currentTarget.files) }} />
             <div className="arkme-conversation-input-card">
@@ -8050,10 +8311,22 @@ export function ArkmeSurface({
                   && arkmeRecordReeditAttachmentBlock(view) !== undefined)}
               onPreview={attachment => {
                 if (activeRecordReeditComposer === undefined) {
-                  if (attachment.localFile !== undefined) setDraftPreview(localFileBlock(attachment.localFile))
+                  if (attachment.localFile !== undefined) {
+                    const block = localFileBlock(attachment.localFile)
+                    if (attachmentPreviewBridge()?.version === 1) {
+                      try { openSessionAttachmentPreview(attachments.flatMap(value => value.localFile === undefined ? [] : [localFileBlock(value.localFile)]), block, 'composer') }
+                      catch { setError('无法创建预览窗口，请再次点击附件重试') }
+                    } else setDraftPreview(block)
+                  }
                 } else {
                   const view = activeRecordReeditComposer.attachments.find(view => arkmeAttachmentId(view) === arkmeAttachmentId(attachment))
-                  if (view !== undefined) setDraftPreview(arkmeRecordReeditAttachmentBlock(view))
+                  if (view !== undefined) {
+                    const block = arkmeRecordReeditAttachmentBlock(view)
+                    if (block !== undefined && attachmentPreviewBridge()?.version === 1) {
+                      try { openSessionAttachmentPreview(activeRecordReeditComposer.attachments.flatMap(value => { const item = arkmeRecordReeditAttachmentBlock(value); return item === undefined ? [] : [item] }), block, 'composer-reedit') }
+                      catch { setError('无法创建预览窗口，请再次点击附件重试') }
+                    } else setDraftPreview(block)
+                  }
                 }
               }}
               onRemove={attachment => {
@@ -8337,125 +8610,7 @@ export function ArkmeSurface({
           </div>}
           </div>
         </ArkmeWideConversation>}
-        {activeConversation && forwardTargetPicker !== undefined && <div
-          data-arkme-notification-blocking-overlay="true"
-          style={styles.forwardTargetBackdrop}
-          role="presentation"
-          onMouseDown={event => { if (event.target === event.currentTarget && messageActionBusy !== 'forward') setForwardTargetPicker(undefined) }}
-        >
-          <section
-            style={styles.forwardTargetDialog}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="arkme-forward-target-title"
-          >
-            <header style={styles.forwardTargetHeader}>
-              <span aria-hidden />
-              <h3 id="arkme-forward-target-title" style={styles.forwardTargetTitle}>{tr("转发给")}</h3>
-              <button data-arkme-feedback="neutral"
-                type="button"
-                style={styles.forwardTargetClose}
-                disabled={messageActionBusy === 'forward'}
-                aria-label={tr("关闭转发对象选择")}
-                onClick={() => { if (messageActionBusy !== 'forward') setForwardTargetPicker(undefined) }}
-              >×</button>
-            </header>
-            <div style={styles.forwardTargetSearchWrap}>
-              <ArkmeForwardSearch
-                value={forwardTargetPicker.keyword}
-                disabled={messageActionBusy === 'forward'}
-                onChange={event => {
-                  const keyword = event.currentTarget.value
-                  setForwardTargetPicker(current => current === undefined
-                    ? current
-                    : { ...current, keyword })
-                }}
-              />
-            </div>
-            <div style={styles.forwardTargetBody}>
-              <ul style={styles.forwardTargetList} aria-label={tr("转发对象列表")}>
-                {(forwardSelfTarget !== undefined || forwardTargetPicker.keyword.trim() === '') && <li key="send_to_self">
-                  {forwardSelfTarget !== undefined ? renderForwardTargetButton(forwardSelfTarget) : <div
-                    aria-disabled="true" aria-label={tr("发给自己暂不可用")} style={{ ...styles.forwardTargetRow, cursor: 'default' }}>
-                    <span style={styles.forwardTargetCheck} aria-hidden />
-                    <ArkmeDirectorySourceAvatar source={{ kind: 'send_to_self' }} size={38} />
-                    <span style={styles.forwardTargetText}>
-                      <span style={styles.forwardTargetName}>{tr("发给自己")}</span>
-                      <span style={styles.forwardTargetMeta}>{tr("默认分类")}</span>
-                    </span>
-                  </div>}
-                </li>}
-                {forwardVisibleTargets.filter(target => target.kind !== 'send_to_self').map(target =>
-                  <li key={arkmeForwardTargetKey(target)}>{renderForwardTargetButton(target)}</li>)}
-                {forwardVisibleTargets.length === 0 && <li role="status" style={styles.forwardTargetStatus}>
-                  {forwardDirectory.loading ? '正在加载转发对象...' : '暂无可转发对象'}
-                </li>}
-              </ul>
-              {forwardDirectory.error !== '' && <div role="alert" style={styles.forwardTargetStatus}>{forwardDirectory.error}</div>}
-            </div>
-            {forwardSelectedTargets.length > 0 && <footer style={styles.forwardTargetFooter}>
-              <div style={styles.forwardTargetRecipients}>
-                <span>{tr("发送给：")}</span>
-                <span style={styles.forwardTargetAvatarStack}>
-                  {forwardSelectedTargets.slice(0, 6).map(target => <ArkmeDirectorySourceAvatar
-                    key={target.sourceRef}
-                    source={target}
-                    size={26}
-                  />)}
-                </span>
-              </div>
-              <div style={styles.forwardTargetFooterDivider} />
-              <div style={styles.forwardTargetPreview}>
-                <span style={styles.forwardTargetPreviewIcon}><ArkmeForwardLinearIcon size={18} /></span>
-                <span style={styles.forwardTargetPreviewText}>
-                  <span style={styles.forwardTargetPreviewTitle}><ArkmeRichText text={arkmeForwardPreviewTitle(forwardPickerMessageItems, source)} presentation="preview" /></span>
-                  <span style={styles.forwardTargetPreviewSubtitle}><ArkmeRichText text={arkmeForwardPreviewSubtitle(forwardPickerMessageItems)} presentation="preview" /></span>
-                </span>
-                <button data-arkme-feedback="neutral"
-                  type="button"
-                  style={styles.forwardTargetPreviewClose}
-                  disabled={messageActionBusy === 'forward'}
-                  aria-label={tr("关闭转发对象选择")}
-                  onClick={() => { if (messageActionBusy !== 'forward') setForwardTargetPicker(undefined) }}
-                ><ArkmeForwardCloseBorderIcon /></button>
-              </div>
-              {forwardTargetPicker.sendError !== '' && <div role="alert" style={styles.forwardTargetSendError}>{forwardTargetPicker.sendError}</div>}
-              <div style={styles.forwardTargetComposer}>
-                <textarea
-                  style={styles.forwardTargetCommentInput}
-                  value={forwardTargetPicker.commentText}
-                  placeholder={tr("说点什么...")}
-                  aria-label={tr("转发附言")}
-                  disabled={messageActionBusy === 'forward'}
-                  onChange={event => {
-                    const commentText = event.currentTarget.value
-                    setForwardTargetPicker(current => current === undefined
-                      ? current
-                      : { ...current, commentText })
-                  }}
-                  onKeyDown={event => {
-                    if (event.key === 'Enter' && !event.shiftKey) {
-                      event.preventDefault()
-                      void confirmForwardTargets()
-                    }
-                  }}
-                />
-                <button data-arkme-feedback="primary"
-                  type="button"
-                  style={{
-                    ...styles.forwardTargetSend,
-                    ...(messageActionBusy === 'forward' ? styles.forwardTargetSendDisabled : {}),
-                  }}
-                  disabled={messageActionBusy === 'forward'}
-                  aria-label={messageActionBusy === 'forward' ? '转发中' : '发送转发'}
-                  onClick={() => { void confirmForwardTargets() }}
-                >
-                  <ArkmeForwardSubmitIcon />
-                </button>
-              </div>
-            </footer>}
-          </section>
-        </div>}
+        {forwardDialog}
         {activeConversation && messageMenu !== undefined && messageMenuItem !== undefined && <ArkmeActionMenu
           label={tr("消息操作")} point={{ x: messageMenu.left, y: messageMenu.top }} onClose={closeMessageMenu}
           actions={[
@@ -8695,6 +8850,7 @@ export function ArkmeSurface({
       />}
       {articlePickerOpen && source !== undefined && authenticatedUserId !== undefined && typeof document !== 'undefined' && createPortal(
         <ArkmeArticlePicker key={`${articleDraftKey}:${articlePickerScope.generation}`} sourceRef={source.sourceRef} userId={authenticatedUserId}
+          onCreate={() => openLongArticleWindow({ ...source, sourceKey: conversationKey })}
           onClose={() => { setArticlePickerScope(undefined); if (sameComposerAsyncScope(articlePickerScope)) textareaRef.current?.focus() }}
           onSelect={article => { if (articleDraftKey && sameComposerAsyncScope(articlePickerScope)) composerArticleStore.set(articleDraftKey, article) }} />,
         document.body,
