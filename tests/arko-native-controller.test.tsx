@@ -53,6 +53,19 @@ it('renders the native surface and routes submission through the existing Arko o
   expect(captured.props!.snapshot.messages.every(message => message.presentationKey)).toBe(true)
   expect(captured.props!.snapshot.draft).toBe('')
 })
+it('updates the selected model without a persistent success notification', async () => {
+  const next = {
+    ...captured.props!.snapshot.modelCatalog!, effectiveRouteKey: 'b',
+    options: captured.props!.snapshot.modelCatalog!.options.map(option => ({ ...option, selected: option.routeKey === 'b' })),
+  }
+  captured.call.mockResolvedValueOnce(next)
+  let accepted: boolean | void
+  await act(async () => { accepted = await captured.props!.actions.selectModel('b') })
+  expect(accepted).toBe(true)
+  expect(captured.props!.snapshot.modelCatalog?.effectiveRouteKey).toBe('b')
+  expect(captured.props!.snapshot.notice).toBeFalsy()
+  expect(captured.props!.snapshot.error).toBeFalsy()
+})
 it('reports model activation failure instead of acknowledging a false selection', async () => {
   let accepted: boolean | void = true
   await act(async () => { accepted = await captured.props!.actions.selectModel('b') })

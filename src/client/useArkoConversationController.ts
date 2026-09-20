@@ -581,7 +581,6 @@ export function useArkoConversationController() {
       const next = await callArkme<ArkmeArkoModelCatalog>('arko.model.activate', { routeKey })
       if (!alive.current) return false
       setCatalog(next)
-      setNotice(tr("已切换到 {v0}", { v0: selectedModelName(next) }))
       return true
     } catch (caught) {
       setError(errorMessage(caught))
