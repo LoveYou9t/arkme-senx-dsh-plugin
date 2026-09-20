@@ -2,6 +2,8 @@
 import { act, useSyncExternalStore } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { NATIVE_FORWARD_ENTRY, type NativeForwardContent, type NativeForwardResult, type NativeForwardWindow } from '../src/client/native-forward-entry.js'
+import type { ArkmeSourceItem } from '../src/types.js'
 import { NativeSelectionHeader } from '../src/client/harness-native-selection-client.js'
 import type { SnapshotSelectorHook } from '@deepseek-ai/dsh-client-ui-slots'
 
@@ -10,7 +12,7 @@ vi.mock('../src/client/api.js', () => ({ callArkme: api.call, ArkmeClientError: 
 
 const disposals: Array<() => Promise<void>> = []
 beforeEach(() => { vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); api.call.mockReset() })
-afterEach(async () => { for (const dispose of disposals.splice(0)) await dispose(); document.body.replaceChildren(); vi.unstubAllGlobals() })
+afterEach(async () => { for (const dispose of disposals.splice(0)) await dispose(); document.body.replaceChildren(); delete (window as NativeForwardWindow)[NATIVE_FORWARD_ENTRY]; vi.unstubAllGlobals() })
 
 async function setup() {
   const surface = document.createElement('section')
@@ -598,65 +600,73 @@ async function setupForward(authResult?: () => Promise<unknown>) {
     if (operation === 'native-chat.forward') return { itemUid: 'sent', localState: 'synced' }
     throw new Error(operation)
   })
+  let finish!: (result: NativeForwardResult) => void
+  const entry = { open: vi.fn((_content: NativeForwardContent, signal: AbortSignal) => new Promise<NativeForwardResult>(resolve => {
+    finish = resolve
+    signal.addEventListener('abort', () => resolve({ completed: false }), { once: true })
+  })) }
+  ;(s.win.parent as NativeForwardWindow)[NATIVE_FORWARD_ENTRY] = entry
+  disposals.push(async () => { delete (s.win.parent as NativeForwardWindow)[NATIVE_FORWARD_ENTRY] })
   await s.enter()
   await s.click('[data-arkme-native-selection="actions"] [aria-label="转发"]')
-  return s
+  return { ...s, entry, finish: (result: NativeForwardResult) => finish(result) }
 }
-it('forwards from the native selection through the shared picker and exits only after confirmed success', async () => {
+it('opens the host Arkme picker without mounting a second dialog in the native frame', async () => {
   const s = await setupForward()
-  expect(s.doc.querySelector('[role="dialog"]')).not.toBeNull()
-  expect(s.doc.querySelector('[data-arkme-forward-source]')).toBeNull()
-  await s.click('[role="dialog"] button[aria-pressed]')
-  const source = s.doc.querySelector('[data-arkme-forward-source]')!
-  expect(source.textContent).toBe('我和DeepSeek Harness的快记我：**source**')
-  expect(source.querySelector('svg')).not.toBeNull()
-  expect(s.doc.body.textContent).toContain('已选 1 条')
-  await act(async () => { [...s.doc.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(button => button.getAttribute('aria-label') === '发送转发')!.click() })
-  expect(api.call).toHaveBeenCalledWith('native-chat.forward', expect.objectContaining({ expectedUserId: 42, snapshot: { sessionId: 'one', messages: [{ key: 'user:opaque', anchorSeq: 1, role: 'user', text: '**source**', createdAtMillis: 1000 }] } }), expect.any(AbortSignal))
   expect(s.doc.querySelector('[role="dialog"]')).toBeNull()
+  expect(s.entry.open).toHaveBeenCalledTimes(1)
+  const content = s.entry.open.mock.calls[0]![0]
+  expect(content.snapshot).toEqual({ sessionId: 'one', messages: [{ key: 'user:opaque', anchorSeq: 1, role: 'user', text: '**source**', createdAtMillis: 1000 }] })
+  const target = { sourceRef: 'target', sourceKey: 'chat:t', kind: 'private_chat' } as ArkmeSourceItem
+  await content.delivery.send(target, '', new AbortController().signal)
+  expect(api.call).toHaveBeenCalledWith('native-chat.forward', expect.objectContaining({ expectedUserId: 42, snapshot: content.snapshot }), expect.any(AbortSignal))
+  await act(async () => { s.finish({ completed: true }) })
   expect(s.doc.querySelector('[data-arkme-native-selection="actions"]')).toBeNull()
 })
 it('cancels forwarding without writing or losing native selection', async () => {
   const s = await setupForward()
-  await s.click('[aria-label="关闭转发对象选择"]')
-  expect(s.doc.querySelector('[role="dialog"]')).toBeNull()
+  await act(async () => { s.finish({ completed: false }) })
   expect(s.doc.body.textContent).toContain('已选 1 条')
   expect(api.call.mock.calls.some(([operation]) => operation === 'native-chat.forward')).toBe(false)
 })
-it.each(['session', 'account'])('cleans native forwarding on %s changes', async kind => {
+it.each(['session', 'account'])('cancels the host forwarding request on native %s changes', async kind => {
   const s = await setupForward()
+  const signal = s.entry.open.mock.calls[0]![1]
   if (kind === 'session') await s.render('other')
   else await act(async () => { s.surface.dataset.arkmeAccountId = '99' })
-  expect(s.doc.querySelector('[role="dialog"]')).toBeNull()
+  expect(signal.aborted).toBe(true)
   expect(api.call.mock.calls.some(([operation]) => operation === 'native-chat.forward')).toBe(false)
 })
-it('keeps the frozen forwarding attempt when the native composer docking element is replaced', async () => {
+it('keeps the host request alive when the native composer docking element is replaced', async () => {
   const s = await setupForward()
+  const signal = s.entry.open.mock.calls[0]![1]
   await act(async () => { s.doc.querySelector('[data-slot="conversation.input.dock"]')!.remove() })
   await s.flush()
-  expect(s.doc.querySelector('[role="dialog"]')).not.toBeNull()
+  expect(signal.aborted).toBe(false)
   const dock = s.doc.createElement('div'); dock.dataset.slot = 'conversation.input.dock'
   await act(async () => s.doc.querySelector('[data-slot="conversation.composer.bar"]')!.before(dock))
   await s.flush()
-  expect(s.doc.querySelectorAll('[role="dialog"]')).toHaveLength(1)
-  await s.click('[aria-label="关闭转发对象选择"]')
+  expect(s.entry.open).toHaveBeenCalledTimes(1)
+  await act(async () => { s.finish({ completed: false }) })
   expect(s.doc.body.textContent).toContain('已选 1 条')
 })
-it('resumes native forwarding with the same frozen snapshot and delivery identity after an uncertain result', async () => {
+it('resumes the same frozen content and delivery identity after cancelling an uncertain attempt', async () => {
   const s = await setupForward()
   const original = api.call.getMockImplementation()!
   api.call.mockImplementation(async (...args) => {
     if (args[0] === 'native-chat.forward') throw new Error('unknown outcome')
     return original(...args)
   })
-  await s.click('[role="dialog"] button[aria-pressed]')
-  const send = async () => act(async () => { [...s.doc.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(button => button.getAttribute('aria-label') === '发送转发')!.click() })
-  await send()
+  const content = s.entry.open.mock.calls[0]![0]
+  const target = { sourceRef: 'target', sourceKey: 'chat:t', kind: 'private_chat' } as ArkmeSourceItem
+  await expect(content.delivery.send(target, 'comment', new AbortController().signal)).rejects.toThrow('unknown outcome')
   const first = api.call.mock.calls.find(([operation]) => operation === 'native-chat.forward')![1]
-  await s.click('[aria-label="关闭转发对象选择"]')
+  await act(async () => { s.finish({ completed: false }) })
   s.setNode({ key: 'user:opaque', anchorSeq: 1, kind: 'user', target: 'chat', visibility: 'visible', data: { time: 1000, content: [{ type: 'text', text: 'changed source' }] } })
   await s.click('[data-arkme-native-selection="actions"] [aria-label="转发"]')
-  await send()
+  const resumed = s.entry.open.mock.calls[1]![0]
+  expect(resumed).toBe(content)
+  await expect(resumed.delivery.send(target, 'changed comment', new AbortController().signal)).rejects.toThrow('unknown outcome')
   const calls = api.call.mock.calls.filter(([operation]) => operation === 'native-chat.forward')
   expect(calls).toHaveLength(2)
   expect(calls[1]![1]).toEqual(first)

@@ -853,9 +853,9 @@ describe('record re-edit attachment UI', () => {
     const forward = renderer!.root.findByProps({ 'aria-label': '消息操作' }).findAllByProps({ role: 'menuitem' })
       .find(button => button.findAllByType('span').some(span => span.children.includes('转发')))!
     await act(async () => { forward.props.onClick(); await flush() })
-    const dialog = renderer!.root.findByProps({ role: 'dialog', 'aria-label': '选择转发对象' })
+    const dialog = renderer!.root.findByProps({ 'aria-labelledby': 'arkme-forward-target-title' })
     const target = dialog.findAll(node => node.type === 'button' && typeof node.props['aria-pressed'] === 'boolean')[0]!
-    await act(async () => { await target.props.onClick(); await flush() })
+    act(() => target.props.onClick())
     const previewText = dialog.findAll(() => true).flatMap(node => node.children.filter(child => typeof child === 'string')).join('\n')
     expect(previewText).toContain('原正文')
     expect(previewText).not.toContain('尚未保存候选')
