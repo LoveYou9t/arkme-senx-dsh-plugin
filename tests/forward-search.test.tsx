@@ -31,11 +31,14 @@ it('preserves controlled keyword changes and busy-state disabling', () => {
 })
 
 it('shares both forwarding surfaces, with theme-aware contrast and native borders/focus', () => {
-  for (const file of ['ArkmeSidebar', 'ArkmeMessageActions']) {
+  for (const file of ['ArkmeForwardDialog']) {
     const source = readFileSync(`src/client/${file}.tsx`, 'utf8')
     expect(source).toContain('<ArkmeForwardSearch')
     expect(source).not.toMatch(/<input[^>]*aria-label="搜索转发对象"/)
   }
+  expect(readFileSync('src/client/ArkmeSidebar.tsx', 'utf8')).toContain('<ArkmeForwardDialog')
+  expect(readFileSync('src/client/ArkmeMessageActions.tsx', 'utf8')).toContain('<ArkmeForwardPicker')
+  expect(readFileSync('src/client/ArkmeForwardPicker.tsx', 'utf8')).toContain('<ArkmeForwardDialog')
   const css = readFileSync('src/client/redesign/arkme-redesign.css', 'utf8')
   const declarations = css.match(/\.arkme-forward-search\s*\{([^}]+)\}/)![1]!
   expect(declarations).toContain('width: 100%')
