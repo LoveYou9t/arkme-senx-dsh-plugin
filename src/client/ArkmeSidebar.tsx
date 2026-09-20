@@ -1,5 +1,7 @@
 import { conversationWindowRequested, navigateConversationWindow } from './conversation-window.js'
 import { conversationSending, withConversationSend } from './conversation-window-sync.js'
+import { DeepSeekLogoMark } from './ArkmeDshAgentInputMarker.js'
+import { createNativeCopyLinkEntry, NATIVE_COPY_LINK_ENTRY, type NativeCopyLinkWindow } from './native-copy-link-entry.js'
 import { NATIVE_FORWARD_ENTRY, isNativeForwardCaller, nativeForwardPreview, type NativeForwardDelivery, type NativeForwardWindow, type NativeForwardEntry, type NativeForwardResult } from './native-forward-entry.js'
 import { longArticleWindowBridge, openLongArticleWindow } from './long-article-window.js'
 import { attachmentPreviewBridge } from './attachment-preview-window.js'
@@ -1096,7 +1098,8 @@ export function arkmeSelectedTimelineItems(
   return items.filter(item => selectedIds.has(arkmeTimelineOccurrenceKey(item)))
 }
 
-export async function arkmeCopyTextToClipboard(value: string): Promise<void> {
+export async function arkmeCopyTextToClipboard(value: string, signal?: AbortSignal): Promise<void> {
+  signal?.throwIfAborted()
   if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText !== undefined) {
     try {
       await navigator.clipboard.writeText(value)
@@ -1105,6 +1108,7 @@ export async function arkmeCopyTextToClipboard(value: string): Promise<void> {
       // Fall back to the old textarea path for embedded WebViews without clipboard grants.
     }
   }
+  signal?.throwIfAborted()
   if (typeof document === 'undefined') throw new Error('复制失败，请稍后重试')
   const textarea = document.createElement('textarea')
   textarea.value = value
@@ -1114,15 +1118,19 @@ export async function arkmeCopyTextToClipboard(value: string): Promise<void> {
   textarea.style.top = '0'
   document.body.appendChild(textarea)
   const selection = document.getSelection()
-  const ranges = selection === null ? [] : Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index))
-  textarea.select()
-  const copied = document.execCommand('copy')
-  document.body.removeChild(textarea)
-  if (selection !== null) {
-    selection.removeAllRanges()
-    for (const range of ranges) selection.addRange(range)
+  const ranges = selection === null ? [] : Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index).cloneRange())
+  const focused = document.activeElement
+  try {
+    textarea.select()
+    if (!document.execCommand('copy')) throw new Error('复制失败，请稍后重试')
+  } finally {
+    textarea.remove()
+    if (focused instanceof HTMLElement) focused.focus({ preventScroll: true })
+    if (selection !== null) {
+      selection.removeAllRanges()
+      for (const range of ranges) selection.addRange(range)
+    }
   }
-  if (!copied) throw new Error('复制失败，请稍后重试')
 }
 
 function arkmeForwardTargetKey(source: ArkmeSourceItem): string {
@@ -1927,6 +1935,7 @@ function CopyLinkRecordAvatar({ item, size = 46 }: { item: ArkmeMessageCopyLinkS
   const name = copyLinkSnapshotSenderName(item)
   const avatar = item.senderAvatarUrl?.trim() ?? ''
   const sizedStyle = { ...styles.copyLinkDetailPlaceholderAvatar, width: size, height: size }
+  if (item.sourceKind === 'dsh_native') return <span role="img" aria-label="DeepSeek Harness 头像" style={sizedStyle}><DeepSeekLogoMark style={{ width: size, height: size, color: arkmeTheme.accent, opacity: 1 }} /></span>
   if (/^(https?:|data:|blob:)/iu.test(avatar)) {
     return <span style={sizedStyle} aria-hidden><img src={avatar} alt="" draggable={false} style={styles.copyLinkDetailAvatarImage} /></span>
   }
@@ -6959,6 +6968,17 @@ export function ArkmeSurface({
     }
     await forwardMessageItems(forwardPickerMessageItems, targets, forwardTargetPicker.commentText)
   }, [forwardMessageItems, forwardPickerMessageItems, forwardTargetPicker, forwardTargets, showMessageActionStatus])
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const host = window as NativeCopyLinkWindow
+    const entry = createNativeCopyLinkEntry(host, {
+      isCurrentAccount: userId => Boolean(authenticatedAccountKey && authenticatedUserId === userId && arkmeAuthenticatedAccountKey(arkmeAuthStore.getSnapshot().auth) === authenticatedAccountKey),
+      generate: (attempt, signal) => callArkme<ArkmeMessageCopyLinkResult>('native-chat.copy-link', { snapshot: attempt.snapshot, expectedUserId: attempt.userId }, signal),
+      copyText: arkmeCopyTextToClipboard,
+    })
+    host[NATIVE_COPY_LINK_ENTRY] = entry
+    return () => { if (host[NATIVE_COPY_LINK_ENTRY] === entry) delete host[NATIVE_COPY_LINK_ENTRY] }
+  }, [authenticatedAccountKey, authenticatedUserId])
   useEffect(() => {
     if (typeof window === 'undefined') return
     const host = window as NativeForwardWindow

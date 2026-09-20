@@ -1,5 +1,5 @@
 /** Client-submitted local conversation content, not an Arkme message capability. */
-export interface NativeChatForwardSnapshot {
+export interface NativeChatSelectionSnapshot {
   sessionId: string
   messages: readonly {
     key: string
