@@ -4,7 +4,7 @@ import { postChatMessageCreation } from './direct-message-admission-service.js'
 import type { ArkmeSessionCredentials } from '../keychain-store.js'
 import type {
   MessageActionCapabilityCodec,
-  ForwardMessage,
+  MessageActionSource,
   MessageActionGateway,
   MessageActionReference,
   MessageActionTarget,
@@ -70,7 +70,7 @@ export class ArkmeMessageActionGateway implements MessageActionGateway {
   }
 
   async createCopyLink(
-    references: readonly MessageActionReference[],
+    references: readonly MessageActionSource[],
     session: ArkmeSessionCredentials,
     signal?: AbortSignal,
   ): Promise<ArkmeMessageCopyLinkResult> {
@@ -159,7 +159,11 @@ export class ArkmeMessageActionGateway implements MessageActionGateway {
     if (!confirmed) throw new ArkmePluginError('message-actions-forward-outcome-unknown', '转发结果尚未确认，请使用原请求重试', false, 409)
   }
 
-  private copyLinkSource(reference: MessageActionReference): Record<string, unknown> {
+  private copyLinkSource(reference: MessageActionSource): Record<string, unknown> {
+    if (reference.ownerKind === 'dsh_native') return {
+      kind: 'dsh_native', dsh_message: { session_id: reference.sessionId, message_id: reference.messageIdentity,
+        role: reference.role, text_content: reference.textContent, send_at: reference.createdAtMillis },
+    }
     if (reference.ownerKind === 'agent') {
       if (reference.role === 'assistant') return {
         kind: 'agent_message', agent_session_id: reference.agentSessionId, agent_message_id: reference.agentMessageId,
@@ -172,7 +176,7 @@ export class ArkmeMessageActionGateway implements MessageActionGateway {
     return { kind: 'record', record_owner_user_id: reference.userId, record_uid: reference.recordUid }
   }
 
-  private chatForwardSourceItem(reference: ForwardMessage): Record<string, unknown> {
+  private chatForwardSourceItem(reference: MessageActionSource): Record<string, unknown> {
     if (reference.ownerKind === 'dsh_native') return {
       source_type: 'agent', render_format: 'markdown', source_identity_kind: 'agent_message',
       source_identity_id: this.nativeIdentity(reference), snapshot_text: reference.textContent, source_sender_user_id: reference.senderUserId,
@@ -191,12 +195,12 @@ export class ArkmeMessageActionGateway implements MessageActionGateway {
     return { source_type: 'record', record_uid: reference.recordUid }
   }
 
-  private nativeIdentity(reference: Extract<ForwardMessage, { ownerKind: 'dsh_native' }>): string {
+  private nativeIdentity(reference: Extract<MessageActionSource, { ownerKind: 'dsh_native' }>): string {
     return `dsh:${createHash('sha256').update(JSON.stringify([reference.sessionId, reference.messageIdentity])).digest('hex')}`
   }
 
   private recordForwardPayload(
-    references: readonly ForwardMessage[],
+    references: readonly MessageActionSource[],
     requestId: string,
     sendAtMillis: number,
   ): Record<string, unknown> {

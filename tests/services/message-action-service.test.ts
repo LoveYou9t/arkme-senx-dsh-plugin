@@ -391,7 +391,7 @@ describe('native DSH snapshot forwarding', () => {
       { ...snapshot, messages: [snapshot.messages[0], snapshot.messages[0]] },
       { ...snapshot, messages: [{ ...snapshot.messages[0], role: 'tool' }] },
       { ...snapshot, messages: [{ ...snapshot.messages[0], text: 'x'.repeat(256 * 1024 + 1) }] }]) {
-      await expect(service.forwardNative(invalid, userId, options)).rejects.toMatchObject({ code: 'native-forward-snapshot-invalid' })
+      await expect(service.forwardNative(invalid, userId, options)).rejects.toMatchObject({ code: 'native-selection-snapshot-invalid' })
     }
     expect(target).not.toHaveBeenCalled()
     expect(r.authenticatedPost).not.toHaveBeenCalled(); expect(r.authenticatedChatPost).not.toHaveBeenCalled()
@@ -421,5 +421,24 @@ describe('Record forwarding receipt facts', () => {
     const result = await messageActionService(r, { openSourceRef: async () => ({ kind: 'send_to_self', ownerRef: 'self' }), invalidateSourceListCache() {} }).forwardNative(snapshot, userId, { ...options, commentText: 'note' })
     expect(result.itemUid).toBe(forwardRecordUid)
     expect(result.warningText).toBe('转发已完成，附言发送失败')
+  })
+})
+
+
+describe('native DSH copy link owner boundary', () => {
+  const snapshot = { sessionId: 'local-session', messages: [{ key: 'u1', anchorSeq: 1, role: 'user', text: '    code()\n', createdAtMillis: 1000 }, { key: 'a1', anchorSeq: 2, role: 'assistant', text: '**answer**', createdAtMillis: 2000 }] }
+  it('uses the original link endpoint with explicit local content, without writing records or sending chat', async () => {
+    const rt = runtime(); const service = messageActionService(rt)
+    await expect(service.copyLinkNative(snapshot, userId)).resolves.toMatchObject({ sid: 'share-sid' })
+    expect(rt.authenticatedChatPost).toHaveBeenCalledWith('/api/v1/chats/messages/copy-link/get-or-create', { sources: snapshot.messages.map(item => ({ kind: 'dsh_native', dsh_message: { session_id: snapshot.sessionId, message_id: item.key, role: item.role, text_content: item.text, send_at: item.createdAtMillis } })) }, expect.objectContaining({ userId }), undefined)
+    expect(rt.authenticatedPost).not.toHaveBeenCalled()
+  })
+  it('rejects stale accounts, empty content, duplicates, malformed roles and the copy-specific budget before HTTP', async () => {
+    const rt = runtime(); const service = messageActionService(rt)
+    await expect(service.copyLinkNative(snapshot, 99)).rejects.toMatchObject({ code: 'native-copy-link-account-changed' })
+    for (const messages of [[], [snapshot.messages[0], snapshot.messages[0]], [{ ...snapshot.messages[0], role: 'tool' }], [{ ...snapshot.messages[0], text: ' ' }], [{ ...snapshot.messages[0], text: 'x'.repeat(90_001) }]]) {
+      await expect(service.copyLinkNative({ ...snapshot, messages }, userId)).rejects.toThrow()
+    }
+    expect(rt.authenticatedChatPost).not.toHaveBeenCalled()
   })
 })

@@ -2,6 +2,7 @@
 import { act, useSyncExternalStore } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { NATIVE_COPY_LINK_ENTRY, type NativeCopyLinkWindow } from '../src/client/native-copy-link-entry.js'
 import { NATIVE_FORWARD_ENTRY, type NativeForwardContent, type NativeForwardResult, type NativeForwardWindow } from '../src/client/native-forward-entry.js'
 import type { ArkmeSourceItem } from '../src/types.js'
 import { NativeSelectionHeader } from '../src/client/harness-native-selection-client.js'
@@ -12,7 +13,7 @@ vi.mock('../src/client/api.js', () => ({ callArkme: api.call, ArkmeClientError: 
 
 const disposals: Array<() => Promise<void>> = []
 beforeEach(() => { vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true); api.call.mockReset() })
-afterEach(async () => { for (const dispose of disposals.splice(0)) await dispose(); document.body.replaceChildren(); delete (window as NativeForwardWindow)[NATIVE_FORWARD_ENTRY]; vi.unstubAllGlobals() })
+afterEach(async () => { for (const dispose of disposals.splice(0)) await dispose(); document.body.replaceChildren(); delete (window as NativeForwardWindow)[NATIVE_FORWARD_ENTRY]; delete (window as NativeCopyLinkWindow)[NATIVE_COPY_LINK_ENTRY]; vi.unstubAllGlobals() })
 
 async function setup() {
   const surface = document.createElement('section')
@@ -80,7 +81,7 @@ it('enters from a message context menu and selects that message', async () => {
   expect(s.doc.querySelector('[role="checkbox"]')?.getAttribute('aria-checked')).toBe('true')
 })
 
-it('overlays the Arkme action bar on the mounted composer, keeps zero selection, and enables forwarding while leaving copy-link unavailable', async () => {
+it('overlays the Arkme action bar on the mounted composer, keeps zero selection, and enables forwarding and copy-link', async () => {
   const s = await setup()
   const dock = s.doc.createElement('div'); dock.dataset.slot = 'conversation.input.dock'
   const input = s.doc.createElement('textarea')
@@ -92,7 +93,7 @@ it('overlays the Arkme action bar on the mounted composer, keeps zero selection,
   expect(bar?.parentElement).toBe(dock)
   const buttons = [...bar.querySelectorAll('button')]
   expect(buttons.map(button => button.textContent)).toEqual(['复制文本', '复制链接', '转发', '退出多选'])
-  expect(buttons[1]!.disabled && buttons[1]!.title === '暂未接入').toBe(true)
+  expect(buttons[1]!.disabled).toBe(false)
   expect(buttons[2]!.disabled).toBe(false)
   expect(buttons[0]!.disabled).toBe(false)
   expect(buttons[3]!.disabled).toBe(false)
@@ -684,4 +685,28 @@ it.each(['selection', 'session', 'account'])('ignores pending authentication aft
   await act(async () => finish({ status: 'authenticated', userId: 42 }))
   expect(s.doc.querySelector('[role="dialog"]')).toBeNull()
   expect(api.call.mock.calls.some(([operation]) => operation === 'sources.list' || operation === 'native-chat.forward')).toBe(false)
+})
+
+it('copies through the outer Arkme entry, retains selection and aborts when the session changes', async () => {
+  const s = await setup()
+  const dock = s.doc.createElement('div'); dock.dataset.slot = 'conversation.input.dock'; s.doc.body.append(dock)
+  const composer = s.doc.createElement('div'); composer.dataset.slot = 'conversation.composer.bar'; s.doc.body.append(composer)
+  s.setNode({ key: 'user:opaque', anchorSeq: 1, target: 'chat', kind: 'user', visibility: 'visible', data: { time: 1000, content: [{ type: 'text', text: 'body' }] } })
+  api.call.mockResolvedValue({ status: 'authenticated', userId: 42 })
+  const copy = vi.fn(async (_attempt: unknown, _signal: AbortSignal, _caller: Window) => {})
+  ;(s.win.parent as NativeCopyLinkWindow)[NATIVE_COPY_LINK_ENTRY] = { copy }
+  await s.enter(); await s.click('[aria-label="复制链接"]')
+  expect(copy, s.doc.body.textContent ?? "").toHaveBeenCalledTimes(1)
+  expect(s.doc.body.textContent).toContain('复制链接成功')
+  expect(s.doc.body.textContent).toContain('已选 1 条')
+  expect(api.call.mock.calls.every(call => call[0] === 'auth.status')).toBe(true)
+  let finish!: () => void
+  copy.mockImplementation(() => new Promise<void>(resolve => { finish = resolve }))
+  await s.click('[aria-label="复制链接"]')
+  expect(s.doc.querySelector<HTMLButtonElement>('[aria-label="复制链接"]')?.disabled).toBe(true)
+  const signal = copy.mock.calls[1]![1] as AbortSignal
+  await s.render('other-session')
+  expect(signal.aborted).toBe(true)
+  await act(async () => finish())
+  expect(s.doc.body.textContent).not.toContain('复制链接成功')
 })
