@@ -2,7 +2,7 @@
 
 ## 原因与范围
 
-即我将原生 DSH iframe 保持为整个浏览器大小，以便任务菜单越过对话区域显示；实际对话通过 AppFrame 定位和 iframe clip-path 限定在第三栏。
+Arkme 将原生 DSH iframe 保持为整个浏览器大小，以便任务菜单越过对话区域显示；实际对话通过 AppFrame 定位和 iframe clip-path 限定在第三栏。
 
 原生右侧栏在 AppFrame 宽度小于 768px 时切到 `position: fixed; inset: 0; width: 100%` 的全屏模式，其定位仍相对于整个 iframe。1100px 窗口中第三栏从 x=344 开始、宽 756px，原生面板却从 x=0 开始、宽 1100px。文件列表因此被外层裁掉，造成空白、会话消失的观感；会话实际没有卸载。
 
